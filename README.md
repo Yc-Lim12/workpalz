@@ -1,4 +1,4 @@
-# WorkPulse
+# WorkPalz
 
 **A Dynamic Island for Windows that notices when new hires are struggling, early.**
 
