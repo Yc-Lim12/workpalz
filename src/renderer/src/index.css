@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Island window ---------- */
+html:not(.hr) body {
+  user-select: none;
+  --ring: #ffc98a;
+}
+html:not(.hr) input,
+html:not(.hr) textarea {
+  user-select: text;
+}
+
+/* ---------- HR window ---------- */
+html.hr,
+html.hr body {
+  background: #f6f7f9;
+  --ring: #1f5fe0;
+}
+html.hr #root {
+  overflow-y: auto;
+}
+
+/* ---------- Accessibility ---------- */
+
+/* Visible keyboard focus everywhere (WCAG 2.4.7 / 2.4.11) */
+:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+/* Custom radio/checkbox faces get the ring via .peer */
+.choice-face {
+  outline-offset: 2px;
+}
+.peer:focus-visible + .choice-face {
+  outline: 3px solid var(--ring);
+}
+
+/* Respect "reduce motion" (WCAG 2.3.3) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Windows High Contrast / forced colours */
+@media (forced-colors: active) {
+  .island-shell {
+    border: 2px solid CanvasText;
+  }
+  .choice-face {
+    border: 1px solid CanvasText;
+  }
+}
+
+.mono {
+  font-family: "Cascadia Mono", "SF Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}

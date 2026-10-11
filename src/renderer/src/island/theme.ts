@@ -1,0 +1,32 @@
+export type IslandView = "pill" | "menu" | "checkin" | "ask" | "request" | "notice" | "privacy";
+
+export const BLUE = "#4C8DFF";
+export const AMBER = "#FFA94D";
+export const MUTED = "#A1A6B0"; // 8.3:1 on black
+export const PLACEHOLDER = "#8E949E"; // 5.6:1 on #1C1D21
+
+// Width per view. Height follows the content, so it never clips when text is zoomed.
+export const WIDTH: Record<IslandView, number> = {
+  pill: 240,
+  menu: 360,
+  checkin: 440,
+  ask: 440,
+  request: 440,
+  notice: 380,
+  privacy: 420,
+};
+export const NOTCH_PILL_WIDTH = 420; // pill wraps around the MacBook notch
+export const NOTCH_GAP = 210; // hidden middle part behind the notch
+
+export const RADIUS: Record<IslandView, number> = {
+  pill: 20,
+  menu: 28,
+  checkin: 30,
+  ask: 30,
+  request: 30,
+  notice: 28,
+  privacy: 30,
+};
+
+// iPhone-like springy morph
+export const MORPH = { type: "spring", stiffness: 420, damping: 36, mass: 0.9 } as const;

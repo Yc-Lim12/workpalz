@@ -1,0 +1,284 @@
+// Requests, Questions, Follow-ups and Check-ins tabs.
+import { useId } from "react";
+import {
+  MOODS,
+  REQUEST_CATEGORIES,
+  STATUS_LABEL,
+  type Action,
+  type HrAsk,
+  type HrCheckIn,
+  type RequestStatus,
+  type SupportRequest,
+} from "../../../shared/types";
+import { C, Card, Chip, Empty, ago } from "./ui";
+
+const th = "px-4 py-3 text-left text-[12px] font-bold uppercase tracking-wide";
+const td = "px-4 py-3.5 align-top text-[14px]";
+
+function Title({ title, intro }: { title: string; intro: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <h1 className="m-0 text-[28px] font-bold tracking-tight">{title}</h1>
+      <p className="m-0 text-[14px]" style={{ color: C.muted }}>
+        {intro}
+      </p>
+    </div>
+  );
+}
+
+// ---------- Requests ----------
+
+const STATUS_STYLE: Record<RequestStatus, { bg: string; fg: string }> = {
+  open: { bg: "#FFE7CC", fg: "#6E3600" },
+  in_progress: { bg: "#E2EBFF", fg: "#163F99" },
+  resolved: { bg: "#DDF3E7", fg: "#185C3B" },
+};
+
+export function RequestsTab({ requests, onStatus }: { requests: SupportRequest[]; onStatus: (id: string, s: RequestStatus) => void }) {
+  const sorted = [...requests].sort((a, b) => (a.status === "resolved" ? 1 : 0) - (b.status === "resolved" ? 1 : 0) || b.createdAt.localeCompare(a.createdAt));
+  return (
+    <div className="flex flex-col gap-5">
+      <Title title="IT & HR requests" intro="Sent from the island. Changing the status notifies the employee straight away." />
+      {sorted.length === 0 ? (
+        <Empty>No requests yet.</Empty>
+      ) : (
+        <Card className="overflow-x-auto !p-0">
+          <table className="w-full min-w-[760px] border-collapse">
+            <caption className="sr-only">IT and HR requests from new hires</caption>
+            <thead style={{ color: C.muted }}>
+              <tr className="border-b border-[#EEF0F3]">
+                <th scope="col" className={th}>Requester</th>
+                <th scope="col" className={th}>Type</th>
+                <th scope="col" className={th}>Details</th>
+                <th scope="col" className={th}>Opened</th>
+                <th scope="col" className={th}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((r) => (
+                <RequestRow key={r.id} r={r} onStatus={onStatus} />
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function RequestRow({ r, onStatus }: { r: SupportRequest; onStatus: (id: string, s: RequestStatus) => void }) {
+  const id = useId();
+  const cat = REQUEST_CATEGORIES.find((c) => c.id === r.category);
+  return (
+    <tr className="border-b border-[#EEF0F3] last:border-0">
+      <th scope="row" className={`${td} text-left font-semibold`}>
+        {r.name}
+        <div className="text-[12.5px] font-normal" style={{ color: C.muted }}>
+          {r.team}
+        </div>
+      </th>
+      <td className={td}>
+        {cat?.label}
+        <div className="text-[12.5px]" style={{ color: C.muted }}>
+          {cat?.dept}
+        </div>
+      </td>
+      <td className={`${td} max-w-[340px]`}>{r.description}</td>
+      <td className={`${td} whitespace-nowrap`} style={{ color: C.muted }}>
+        {ago(r.createdAt)}
+      </td>
+      <td className={td}>
+        <label htmlFor={id} className="sr-only">
+          Status for {r.name}'s request
+        </label>
+        <select
+          id={id}
+          value={r.status}
+          onChange={(e) => onStatus(r.id, e.target.value as RequestStatus)}
+          className="min-h-10 rounded-lg border-0 px-2.5 text-[13px] font-semibold"
+          style={{ background: STATUS_STYLE[r.status].bg, color: STATUS_STYLE[r.status].fg }}
+        >
+          {(Object.keys(STATUS_LABEL) as RequestStatus[]).map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABEL[s]}
+            </option>
+          ))}
+        </select>
+      </td>
+    </tr>
+  );
+}
+
+// ---------- Questions ----------
+
+// Group questions that use the same key words ("staging server access" ≈ "how do I get access to the staging server")
+const STOP = new Set("a an the is are do does i me my to of for in on at and or how what who where when which can get please".split(" "));
+const words = (s: string) => new Set(s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w && !STOP.has(w)));
+const similar = (a: Set<string>, b: Set<string>) => {
+  const shared = [...a].filter((w) => b.has(w)).length;
+  return shared / Math.max(1, new Set([...a, ...b]).size) >= 0.5;
+};
+
+export function QuestionsTab({ asks }: { asks: HrAsk[] }) {
+  // Unanswered questions grouped by wording: each group is a possible gap in onboarding docs
+  const groups: { text: string; key: Set<string>; count: number; teams: Set<string>; last: string }[] = [];
+  for (const a of [...asks].filter((x) => !x.answered).sort((x, y) => x.createdAt.localeCompare(y.createdAt))) {
+    const key = words(a.question);
+    let g = groups.find((x) => similar(x.key, key));
+    if (!g) {
+      g = { text: a.question, key, count: 0, teams: new Set<string>(), last: a.createdAt };
+      groups.push(g);
+    }
+    g.count++;
+    g.teams.add(a.team);
+    if (a.createdAt > g.last) g.last = a.createdAt;
+  }
+  const gapList = groups.sort((a, b) => b.count - a.count);
+
+  const topics = new Map<string, number>();
+  for (const a of asks) if (a.topic) topics.set(a.topic, (topics.get(a.topic) ?? 0) + 1);
+  const topicList = [...topics.entries()].sort((a, b) => b[1] - a[1]);
+
+  return (
+    <div className="flex flex-col gap-5">
+      <Title
+        title="Questions new hires ask"
+        intro="From Ask WorkPalz. Anonymous, by team only. Questions the handbook can't answer show where onboarding is missing something."
+      />
+      <div className="flex flex-wrap gap-4">
+        <Card as="section" className="flex min-w-0 flex-[2_1_420px] flex-col gap-3">
+          <h2 className="m-0 text-[16px] font-bold">Not in the handbook</h2>
+          {gapList.length === 0 ? (
+            <p className="m-0 text-[14px]" style={{ color: C.muted }}>
+              Every question was answered.
+            </p>
+          ) : (
+            <ul className="m-0 flex list-none flex-col p-0">
+              {gapList.map((g) => (
+                <li key={g.text} className="flex flex-wrap items-center gap-3 border-t border-[#EEF0F3] py-3 first:border-0 first:pt-0">
+                  <span className="flex-1 text-[14px] font-semibold">{g.text}</span>
+                  <span className="text-[13px]" style={{ color: C.muted }}>
+                    {[...g.teams].join(", ")} · {ago(g.last)}
+                  </span>
+                  <Chip bg={g.count > 1 ? "#FFE7CC" : "#ECEEF1"} fg={g.count > 1 ? "#6E3600" : "#343A45"}>
+                    Asked {g.count}×
+                  </Chip>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+        <Card as="section" className="flex min-w-0 flex-[1_1_280px] flex-col gap-3">
+          <h2 className="m-0 text-[16px] font-bold">Most looked-up topics</h2>
+          <ol className="m-0 flex flex-col gap-2 pl-5 text-[14px]">
+            {topicList.map(([topic, n]) => (
+              <li key={topic}>
+                {topic} <span style={{ color: C.muted }}>({n})</span>
+              </li>
+            ))}
+          </ol>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Follow-ups ----------
+
+export function FollowUpsTab({ actions, onStatus }: { actions: Action[]; onStatus: (id: string, s: Action["status"]) => void }) {
+  return (
+    <div className="flex flex-col gap-5">
+      <Title
+        title="Follow-ups"
+        intro="Marking a follow-up done tells the new hires who raised it that action was taken. They stay anonymous to you."
+      />
+      {actions.length === 0 ? (
+        <Empty>No follow-ups yet. Create one from an AI theme on the Overview.</Empty>
+      ) : (
+        <Card>
+          <ul className="m-0 flex list-none flex-col gap-1 p-0">
+            {actions.map((a) => (
+              <li key={a.id}>
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl p-3 hover:bg-[#F6F7F9]">
+                  <input
+                    type="checkbox"
+                    checked={a.status === "done"}
+                    onChange={(e) => onStatus(a.id, e.target.checked ? "done" : "open")}
+                    className="mt-0.5 h-5 w-5 shrink-0 accent-[#1F5FE0]"
+                  />
+                  <span className="flex flex-col gap-1">
+                    <span className={`text-[14.5px] ${a.status === "done" ? "line-through" : ""}`} style={{ color: a.status === "done" ? "#5F6673" : C.text }}>
+                      {a.action}
+                    </span>
+                    <span className="text-[12.5px]" style={{ color: C.muted }}>
+                      {a.themeTitle} · {a.owner} · created {ago(a.createdAt)}
+                      {a.status === "done" && " · employees notified"}
+                    </span>
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ---------- Check-ins ----------
+
+export function CheckInsTab({ checkIns }: { checkIns: HrCheckIn[] }) {
+  const sorted = [...checkIns].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return (
+    <div className="flex flex-col gap-5">
+      <Title title="Check-ins" intro="Every voluntary weekly check-in. Names only appear when the employee chose to share them." />
+      {sorted.length === 0 ? (
+        <Empty>No check-ins yet.</Empty>
+      ) : (
+        <Card className="overflow-x-auto !p-0">
+          <table className="w-full min-w-[760px] border-collapse">
+            <caption className="sr-only">Weekly check-ins from new hires</caption>
+            <thead style={{ color: C.muted }}>
+              <tr className="border-b border-[#EEF0F3]">
+                <th scope="col" className={th}>From</th>
+                <th scope="col" className={th}>Question</th>
+                <th scope="col" className={th}>Answer</th>
+                <th scope="col" className={th}>Comment</th>
+                <th scope="col" className={th}>When</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((c) => {
+                const m = MOODS.find((x) => x.id === c.mood)!;
+                return (
+                  <tr key={c.id} className="border-b border-[#EEF0F3] last:border-0">
+                    <th scope="row" className={`${td} text-left font-semibold`}>
+                      {c.name ?? `${c.team} new hire`}
+                      <div className="text-[12.5px] font-normal" style={{ color: C.muted }}>
+                        Week {c.week}
+                        {c.name ? ` · ${c.team}` : ""}
+                      </div>
+                    </th>
+                    <td className={`${td} max-w-[220px]`} style={{ color: C.muted }}>
+                      {c.question}
+                    </td>
+                    <td className={td}>
+                      <Chip bg="#F3F4F6" fg="#2E333C">
+                        <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full" style={{ background: m.color }} />
+                        {m.label}
+                      </Chip>
+                    </td>
+                    <td className={`${td} max-w-[320px]`}>{c.note || <span style={{ color: C.muted }}>No comment</span>}</td>
+                    <td className={`${td} whitespace-nowrap`} style={{ color: C.muted }}>
+                      {ago(c.createdAt)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+}
