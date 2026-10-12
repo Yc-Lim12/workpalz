@@ -1,0 +1,284 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>WorkPalz Feature Tour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Onest:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one reading column; feature screenshots sit on black "desktop" plates in a wrapping grid; HR screens full width. */
+:root {
+  --bg:#F3F4F7; --surface:#FFFFFF; --ink:#14161A; --muted:#545B69; --line:#DDE1E8;
+  --plate:#0B0C0F; --amber:#B35F0E; --amber-soft:#FFF1E2; --blue:#1F5FE0; --good:#1D6B45; --good-soft:#E3F4EA;
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body:"Onest", "Segoe UI", system-ui, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#101216; --surface:#181B21; --ink:#ECEEF2; --muted:#A3A9B5; --line:#2A2F38;
+  --plate:#000000; --amber:#FFB15E; --amber-soft:#2E2213; --blue:#7FA8FF; --good:#7CD4A4; --good-soft:#15291E; color-scheme:dark } }
+:root[data-theme="dark"] {
+  --bg:#101216; --surface:#181B21; --ink:#ECEEF2; --muted:#A3A9B5; --line:#2A2F38;
+  --plate:#000000; --amber:#FFB15E; --amber-soft:#2E2213; --blue:#7FA8FF; --good:#7CD4A4; --good-soft:#15291E; color-scheme:dark }
+body { background:var(--bg); color:var(--ink); font:16px/1.6 var(--body); }
+.wrap { max-width:1120px; margin:0 auto; padding-inline:clamp(16px,4vw,40px); padding-block:48px 80px; display:flex; flex-direction:column; gap:64px; }
+h1,h2,h3 { font-family:var(--display); text-wrap:balance; margin:0; }
+h1 { font-size:clamp(2.2rem,5vw,3.4rem); font-weight:800; letter-spacing:-0.02em; line-height:1.05; }
+h2 { font-size:1.7rem; font-weight:800; letter-spacing:-0.01em; }
+h3 { font-size:1.08rem; font-weight:600; }
+p { margin:0; }
+.lede { font-size:1.12rem; color:var(--muted); max-width:62ch; }
+.eyebrow { font:500 .78rem var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--amber); }
+header.hero { display:flex; flex-direction:column; gap:18px; }
+.pillrow { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+.pillrow img { height:40px; border-radius:20px; background:#000; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; }
+.stat { background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px 18px; display:flex; flex-direction:column; gap:2px; }
+.stat b { font:800 2rem/1.1 var(--display); font-variant-numeric:tabular-nums; }
+.stat span { color:var(--muted); font-size:.92rem; }
+.stat.good b { color:var(--good); }
+section { display:flex; flex-direction:column; gap:24px; }
+.sechead { display:flex; flex-direction:column; gap:8px; max-width:68ch; }
+.sechead p { color:var(--muted); }
+.loop { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:0; background:var(--surface); border:1px solid var(--line); border-radius:16px; overflow:hidden; counter-reset:step; }
+.loop li { list-style:none; padding:18px 20px; border-right:1px solid var(--line); display:flex; flex-direction:column; gap:6px; counter-increment:step; }
+.loop li:last-child { border-right:0; }
+.loop li::before { content:"Step " counter(step); font:500 .74rem var(--mono); color:var(--amber); letter-spacing:.06em; text-transform:uppercase; }
+.loop strong { font-family:var(--display); font-size:1.05rem; }
+.loop span { color:var(--muted); font-size:.93rem; }
+ol.loop { margin:0; padding:0; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:20px; align-items:start; }
+.feat { margin:0; display:flex; flex-direction:column; gap:12px; min-width:0; }
+.plate { background:var(--plate); border-radius:16px; padding:22px; display:flex; justify-content:center; align-items:flex-start; }
+.plate img { border-radius:22px; max-width:100%; height:auto; display:block; }
+.feat figcaption { display:flex; flex-direction:column; gap:4px; }
+.feat figcaption p { color:var(--muted); font-size:.95rem; }
+.wide { margin:0; display:flex; flex-direction:column; gap:12px; }
+.shot { border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#F6F7F9; }
+.shot img { display:block; width:100%; height:auto; }
+.wide figcaption { display:flex; flex-direction:column; gap:4px; max-width:70ch; }
+.wide figcaption p { color:var(--muted); font-size:.95rem; }
+.two { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:20px; }
+.two > * { min-width:0; }
+.panel { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:22px; display:flex; flex-direction:column; gap:14px; }
+.checks { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; font-size:.93rem; }
+.checks li { display:flex; gap:10px; align-items:baseline; }
+.ok { color:var(--good); font-weight:700; flex:none; }
+.badge { align-self:flex-start; background:var(--good-soft); color:var(--good); font:500 .8rem var(--mono); padding:4px 10px; border-radius:999px; }
+ul.plain { margin:0; padding-left:1.2em; display:flex; flex-direction:column; gap:6px; }
+.demo { counter-reset:d; list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
+.demo li { counter-increment:d; display:grid; grid-template-columns:2.2rem 1fr; gap:10px; align-items:baseline; }
+.demo li::before { content:counter(d); font:800 1.1rem var(--display); color:var(--amber); }
+kbd { font:500 .82rem var(--mono); background:var(--amber-soft); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:1px 6px; white-space:nowrap; }
+.note { background:var(--amber-soft); border-radius:14px; padding:16px 20px; font-size:.95rem; }
+a:focus-visible, img:focus-visible { outline:3px solid var(--blue); outline-offset:3px; }
+@media (max-width:640px) { .loop li { border-right:0; border-bottom:1px solid var(--line); } .loop li:last-child { border-bottom:0; } }
+</style>
+
+<div class="wrap">
+<header class="hero">
+  <span class="eyebrow">AI Future Makers 2026 · Challenge 4 · Retain</span>
+  <h1>WorkPalz</h1>
+  <p class="lede">A Dynamic Island for the desktop. New hires use it every day to look things up, ask IT and HR for help, and check in once a week. HR gets AI themes from that voluntary feedback, acts on them, and the island tells the employee what changed.</p>
+  <div class="pillrow" aria-label="The island's resting states">
+    <img src="shots/01-pill.png" alt="Resting pill: WorkPalz, week 2" width="240" height="40">
+    <img src="shots/08-checkin-prompt.png" alt="Pill pulsing amber: Weekly check-in" width="240" height="40">
+    <img src="shots/11-focus-timer.png" alt="Pill showing a focus countdown, 24:59" width="240" height="40">
+  </div>
+  <div class="stats">
+    <div class="stat good"><b>37/37</b><span>end-to-end checks passed</span></div>
+    <div class="stat good"><b>0</b><span>WCAG 2.2 AA violations across 13 screens</span></div>
+    <div class="stat good"><b>9/9</b><span>logic tests passed</span></div>
+    <div class="stat"><b>0</b><span>apps, screens or keystrokes tracked</span></div>
+  </div>
+  <p style="color:var(--muted);font-size:.9rem">Every screenshot below was taken by the automated test while it clicked and typed through the real app. All people and data are fictional.</p>
+</header>
+
+<section aria-labelledby="loop-h">
+  <div class="sechead">
+    <span class="eyebrow">How it works</span>
+    <h2 id="loop-h">The feedback loop</h2>
+    <p>This is the Challenge 4 flow from the guide: employee feedback, AI finds themes, HR reviews, support action. WorkPalz adds the last step most tools skip.</p>
+  </div>
+  <ol class="loop">
+    <li><strong>Employee speaks up</strong><span>Check-in, a question the handbook can't answer, or an IT/HR request</span></li>
+    <li><strong>AI finds themes</strong><span>Groups feedback by team, counts people, compares with last week</span></li>
+    <li><strong>HR reviews</strong><span>Reads the quotes and the suggested action, then decides</span></li>
+    <li><strong>Action taken</strong><span>One-click follow-up, tracked to done</span></li>
+    <li><strong>Employee hears back</strong><span>The island expands to say what was fixed</span></li>
+  </ol>
+</section>
+
+<section aria-labelledby="island-h">
+  <div class="sechead">
+    <span class="eyebrow">For new hires</span>
+    <h2 id="island-h">The island</h2>
+    <p>Sits at the top of the screen and grows only when it has something to say. On a MacBook it wraps around the notch. <kbd>Ctrl+Alt+Space</kbd> opens it from any app.</p>
+  </div>
+  <div class="grid">
+    <figure class="feat">
+  <div class="plate"><img src="shots/02-menu.png" alt="Island menu with Ask WorkPalz, Quick request, Weekly check-in and Focus timer" loading="lazy"></div>
+  <figcaption><h3>Menu</h3><p>Four tools in one tap. Closes by itself after a few seconds unless you're using it.</p></figcaption>
+</figure>
+    <figure class="feat">
+  <div class="plate"><img src="shots/03-ask-jargon.png" alt="Ask WorkPalz answering What is a Q4 OKR with a link to this quarter's OKRs" loading="lazy"></div>
+  <figcaption><h3>Ask WorkPalz: jargon</h3><p>Explains company terms in plain English, using only the company handbook, with a link to the source.</p></figcaption>
+</figure>
+    <figure class="feat">
+  <div class="plate"><img src="shots/05-ask-not-found.png" alt="Ask WorkPalz saying it couldn't find staging server access in the handbook" loading="lazy"></div>
+  <figcaption><h3>Ask WorkPalz: no answer</h3><p>If the handbook doesn't cover it, WorkPalz says so instead of guessing, and logs it for HR as an onboarding gap.</p></figcaption>
+</figure>
+    <figure class="feat">
+  <div class="plate"><img src="shots/06-request-form.png" alt="Quick request form with Laptop or hardware selected" loading="lazy"></div>
+  <figcaption><h3>Quick request</h3><p>IT or HR ticket in two steps. Shows the status of your recent requests underneath.</p></figcaption>
+</figure>
+    <figure class="feat">
+  <div class="plate"><img src="shots/09-checkin-form.png" alt="Weekly check-in with Frustrated selected and a note about a software licence" loading="lazy"></div>
+  <figcaption><h3>Weekly check-in</h3><p>One tap plus an optional note. The question changes with your onboarding week. Anonymous unless you tick the box.</p></figcaption>
+</figure>
+    <figure class="feat">
+  <div class="plate"><img src="shots/12-privacy.png" alt="Privacy panel listing kept and never-collected data" loading="lazy"></div>
+  <figcaption><h3>Your privacy</h3><p>What's kept, what's never collected, and buttons to download or delete your data.</p></figcaption>
+</figure>
+    <figure class="feat">
+  <div class="plate"><img src="shots/16-island-update-from-hr.png" alt="Island update telling the employee the licence problem was acted on" loading="lazy"></div>
+  <figcaption><h3>Update from HR</h3><p>When HR finishes a follow-up, everyone who raised it is told, without HR ever seeing who they are.</p></figcaption>
+</figure>
+    <figure class="feat">
+  <div class="plate"><img src="shots/18-island-request-resolved.png" alt="Island notice saying the laptop keyboard request is resolved" loading="lazy"></div>
+  <figcaption><h3>Request resolved</h3><p>Status changes on a request reach the employee straight away.</p></figcaption>
+</figure>
+  </div>
+</section>
+
+<section aria-labelledby="hr-h">
+  <div class="sechead">
+    <span class="eyebrow">For HR</span>
+    <h2 id="hr-h">The dashboard</h2>
+    <p>Opens with <kbd>Ctrl+Alt+H</kbd>. Updates live as new hires use the island. Filter any view by team.</p>
+  </div>
+  <figure class="wide">
+    <div class="shot"><img src="shots/14-hr-overview-themes.png" alt="HR overview with stats, mood mix and three AI theme cards" loading="lazy"></div>
+    <figcaption><h3>Overview and AI themes</h3><p>Each theme shows how many new hires are affected out of the team, the trend against last week, quotes tagged by source, and one suggested action. Here Engineering reached 4 of 5 after the live check-in in the test.</p></figcaption>
+  </figure>
+  <div class="two">
+    <figure class="wide">
+      <div class="shot"><img src="shots/17-hr-requests.png" alt="Requests table with status dropdowns" loading="lazy"></div>
+      <figcaption><h3>Requests</h3><p>Change a status and the employee is notified.</p></figcaption>
+    </figure>
+    <figure class="wide">
+      <div class="shot"><img src="shots/19-hr-questions.png" alt="Questions tab grouping unanswered questions" loading="lazy"></div>
+      <figcaption><h3>Questions</h3><p>Similar unanswered questions are grouped, so HR sees which handbook gaps come up most.</p></figcaption>
+    </figure>
+    <figure class="wide">
+      <div class="shot"><img src="shots/15-hr-followups.png" alt="Follow-ups list with a checkbox" loading="lazy"></div>
+      <figcaption><h3>Follow-ups</h3><p>Ticking one done closes the loop with the employees who raised it.</p></figcaption>
+    </figure>
+    <figure class="wide">
+      <div class="shot"><img src="shots/20-hr-checkins.png" alt="Check-ins table showing anonymous team labels" loading="lazy"></div>
+      <figcaption><h3>Check-ins</h3><p>Shows "Engineering new hire" unless the person chose to share their name.</p></figcaption>
+    </figure>
+  </div>
+</section>
+
+<section aria-labelledby="trust-h">
+  <div class="sechead">
+    <span class="eyebrow">Responsible AI · ESG</span>
+    <h2 id="trust-h">Privacy and accessibility</h2>
+  </div>
+  <div class="two">
+    <div class="panel">
+      <h3>Privacy by design</h3>
+      <ul class="plain">
+        <li>Only voluntary input. No app, screen, keystroke or camera tracking, and no mood guessing.</li>
+        <li>Check-ins and questions are anonymous to HR by default. Requests carry a name because IT needs it.</li>
+        <li>Names never go to the AI. It sees P1, P2 only to count people.</li>
+        <li>The HR window receives cleaned data. Hidden IDs are used only to send updates back.</li>
+        <li>Download and delete your own data from the island.</li>
+        <li>AI suggests, people decide. Never used in performance reviews.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>WCAG 2.2 AA</h3>
+      <ul class="plain">
+        <li>Everything works by keyboard, with a visible focus ring and focus moved into each view.</li>
+        <li>Real labelled form controls, so screen readers announce options and choices.</li>
+        <li>Status changes are announced: new check-in, answers, analysis done.</li>
+        <li>Text contrast at least 4.5:1, borders and focus 3:1, checked by script.</li>
+        <li>Never colour alone: moods, severity and status always have words.</li>
+        <li>Honours reduce motion and Windows high-contrast mode. 44px targets.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="test-h">
+  <div class="sechead">
+    <span class="eyebrow">Evidence</span>
+    <h2 id="test-h">What the test checked</h2>
+    <p>The end-to-end test launches the real app, uses it like a person would, and runs axe-core on every screen. Your team can rerun it with <kbd>npm run test:e2e</kbd>.</p>
+  </div>
+  <div class="two">
+    <div class="panel">
+      <span class="badge">24 functional checks passed</span>
+      <ul class="checks"><li><span class="ok" aria-hidden="true">✓</span><span>Pill shows onboarding week</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Menu has 4 features</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Ask answers jargon from handbook</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Ask returns a link button</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Ask admits when the handbook has no answer</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Request sent flash</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Check-in prompt pulses in the pill</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Question matches onboarding week 2</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Focus timer counts down in the pill</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Privacy shows stored counts</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Esc collapses the island</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Keyboard open moves focus to first option</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Tab moves to the next option</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>HR window title</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Response rate is 9 of 10 after the live check-in</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Engineering theme is 4 of 5 after the live check-in</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Trend shown vs last week</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Marketing themes found</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Island expands with an update when HR finishes the follow-up</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Island tells the employee their request was resolved</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Similar unanswered questions are grouped (staging access asked 3×)</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Live check-in is anonymous to HR</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>Team filter shows only Marketing themes</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>No console errors</span></li></ul>
+    </div>
+    <div class="panel">
+      <span class="badge">13 screens · 0 violations</span>
+      <ul class="checks"><li><span class="ok" aria-hidden="true">✓</span><span>island menu</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>island ask (empty)</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>island ask (answer)</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>island request</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>island check-in</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>island privacy</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>HR overview (before analysis)</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>HR overview (themes)</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>HR follow-ups</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>island notice</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>HR requests</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>HR questions</span></li>
+<li><span class="ok" aria-hidden="true">✓</span><span>HR check-ins</span></li></ul>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="demo-h">
+  <div class="sechead">
+    <span class="eyebrow">For the pitch</span>
+    <h2 id="demo-h">Two-minute demo</h2>
+    <p>On a Mac, use Cmd+Option instead of Ctrl+Alt.</p>
+  </div>
+  <div class="panel">
+    <ol class="demo">
+      <li><span>Press <kbd>Ctrl+Alt+R</kbd> to reset, then <kbd>Ctrl+Alt+H</kbd> to open the dashboard.</span></li>
+      <li><span>On the island, Ask WorkPalz "What is a Q4 OKR?", then "how do I get staging server access" to show a handbook gap.</span></li>
+      <li><span>Press <kbd>Ctrl+Alt+C</kbd>. The pill pulses. Answer Frustrated with "Still waiting on my software licence".</span></li>
+      <li><span>On the dashboard, click Analyse this week: Engineering shows 4 of 5, up from 1 last week.</span></li>
+      <li><span>Create follow-up, open Follow-ups, tick it done. The island expands with the update.</span></li>
+    </ol>
+  </div>
+  <p class="note">This build stores data on one computer with no sign-in. A company rollout needs a shared database, single sign-on, an HR admin page for the handbook, and a security and PDPA review.</p>
+</section>
+</div>
+
+</body></html>

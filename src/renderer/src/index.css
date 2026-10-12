@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Island window ---------- */
+html:not(.hr) body {
+  user-select: none;
+  --ring: #ffc98a;
+}
+html:not(.hr) input,
+html:not(.hr) textarea {
+  user-select: text;
+}
+
+/* ---------- HR window ---------- */
+html.hr,
+html.hr body {
+  background: #f6f7f9;
+  --ring: #1f5fe0;
+}
+html.hr #root {
+  overflow-y: auto;
+}
+
+/* ---------- Accessibility ---------- */
+
+/* Visible keyboard focus everywhere (WCAG 2.4.7 / 2.4.11) */
+:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+/* Custom radio/checkbox faces get the ring via .peer */
+.choice-face {
+  outline-offset: 2px;
+}
+.peer:focus-visible + .choice-face {
+  outline: 3px solid var(--ring);
+}
+
+/* Respect "reduce motion" (WCAG 2.3.3) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Windows High Contrast / forced colours */
+@media (forced-colors: active) {
+  .island-shell {
+    border: 2px solid CanvasText;
+  }
+  .choice-face {
+    border: 1px solid CanvasText;
+  }
+}
+
+.mono {
+  font-family: "Cascadia Mono", "SF Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+:root, :root[data-theme="dark"] {
+  --bg: #101216;
+  --surface: #1C1D21;
+  --island-bg: #000000; /* Pure black to hide in the notch */
+  --ink: #F4F5F7;
+  --muted: #A1A6B0;
+  --line: #2A2D33;
+  --amber: #FFA94D;
+  --amber-soft: #3A2A14;
+  --blue: #4C8DFF;
+  --good: #9BE3BF;
+  --good-soft: #183A2A;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #F3F4F7;
+  --surface: #FFFFFF;
+  --island-bg: #FFFFFF; /* Crisp white for light mode */
+  --ink: #14161A;
+  --muted: #545B69;
+  --line: #DDE1E8;
+  --amber: #B35F0E;
+  --amber-soft: #FFF1E2;
+  --blue: #1F5FE0;
+  --good: #1D6B45;
+  --good-soft: #E3F4EA;
+  color-scheme: light;
+}
