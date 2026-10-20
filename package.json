@@ -41,7 +41,8 @@
       "output": "dist"
     },
     "files": [
-      "out/**/*"
+      "out/**/*",
+      "resources/**/*"
     ],
     "win": {
       "target": [

@@ -1,16 +1,20 @@
 // Requests, Questions, Follow-ups and Check-ins tabs.
-import { useId } from "react";
+import { useId, useState } from "react";
 import {
+  DRAFT_PLACEHOLDER,
   MOODS,
   REQUEST_CATEGORIES,
   STATUS_LABEL,
   type Action,
+  type HandbookDraft,
+  type HandbookEntry,
+  type HandbookInput,
   type HrAsk,
   type HrCheckIn,
   type RequestStatus,
   type SupportRequest,
 } from "../../../shared/types";
-import { C, Card, Chip, Empty, ago } from "./ui";
+import { Button, C, Card, Chip, Empty, ago } from "./ui";
 
 const th = "px-4 py-3 text-left text-[12px] font-bold uppercase tracking-wide";
 const td = "px-4 py-3.5 align-top text-[14px]";
@@ -29,9 +33,9 @@ function Title({ title, intro }: { title: string; intro: string }) {
 // ---------- Requests ----------
 
 const STATUS_STYLE: Record<RequestStatus, { bg: string; fg: string }> = {
-  open: { bg: "#FFE7CC", fg: "#6E3600" },
-  in_progress: { bg: "#E2EBFF", fg: "#163F99" },
-  resolved: { bg: "#DDF3E7", fg: "#185C3B" },
+  open: { bg: "var(--hr-amber-bg)", fg: "var(--hr-amber-fg)" },
+  in_progress: { bg: "var(--hr-blue-soft)", fg: "var(--hr-blue-text)" },
+  resolved: { bg: "var(--hr-green-bg)", fg: "var(--hr-green-fg)" },
 };
 
 export function RequestsTab({ requests, onStatus }: { requests: SupportRequest[]; onStatus: (id: string, s: RequestStatus) => void }) {
@@ -46,7 +50,7 @@ export function RequestsTab({ requests, onStatus }: { requests: SupportRequest[]
           <table className="w-full min-w-[760px] border-collapse">
             <caption className="sr-only">IT and HR requests from new hires</caption>
             <thead style={{ color: C.muted }}>
-              <tr className="border-b border-[#EEF0F3]">
+              <tr className="border-b border-[color:var(--hr-line-soft)]">
                 <th scope="col" className={th}>Requester</th>
                 <th scope="col" className={th}>Type</th>
                 <th scope="col" className={th}>Details</th>
@@ -70,7 +74,7 @@ function RequestRow({ r, onStatus }: { r: SupportRequest; onStatus: (id: string,
   const id = useId();
   const cat = REQUEST_CATEGORIES.find((c) => c.id === r.category);
   return (
-    <tr className="border-b border-[#EEF0F3] last:border-0">
+    <tr className="border-b border-[color:var(--hr-line-soft)] last:border-0">
       <th scope="row" className={`${td} text-left font-semibold`}>
         {r.name}
         <div className="text-[12.5px] font-normal" style={{ color: C.muted }}>
@@ -119,17 +123,33 @@ const similar = (a: Set<string>, b: Set<string>) => {
   return shared / Math.max(1, new Set([...a, ...b]).size) >= 0.5;
 };
 
-export function QuestionsTab({ asks }: { asks: HrAsk[] }) {
+type Gap = { text: string; key: Set<string>; count: number; teams: Set<string>; last: string; ids: string[]; questions: Set<string> };
+
+export function QuestionsTab({
+  asks,
+  added,
+  onDraft,
+  onPublish,
+}: {
+  asks: HrAsk[];
+  added: HandbookEntry[];
+  onDraft?: (questions: string[]) => Promise<HandbookDraft>;
+  onPublish?: (input: HandbookInput) => Promise<void>; // left out = read only (manager view)
+}) {
+  const [editing, setEditing] = useState<string | null>(null);
+
   // Unanswered questions grouped by wording: each group is a possible gap in onboarding docs
-  const groups: { text: string; key: Set<string>; count: number; teams: Set<string>; last: string }[] = [];
+  const groups: Gap[] = [];
   for (const a of [...asks].filter((x) => !x.answered).sort((x, y) => x.createdAt.localeCompare(y.createdAt))) {
     const key = words(a.question);
     let g = groups.find((x) => similar(x.key, key));
     if (!g) {
-      g = { text: a.question, key, count: 0, teams: new Set<string>(), last: a.createdAt };
+      g = { text: a.question, key, count: 0, teams: new Set<string>(), last: a.createdAt, ids: [], questions: new Set<string>() };
       groups.push(g);
     }
     g.count++;
+    g.ids.push(a.id);
+    g.questions.add(a.question);
     g.teams.add(a.team);
     if (a.createdAt > g.last) g.last = a.createdAt;
   }
@@ -143,7 +163,7 @@ export function QuestionsTab({ asks }: { asks: HrAsk[] }) {
     <div className="flex flex-col gap-5">
       <Title
         title="Questions new hires ask"
-        intro="From Ask WorkPalz. Anonymous, by team only. Questions the handbook can't answer show where onboarding is missing something."
+        intro="From Ask WorkPalz. Anonymous, by team only. Questions the handbook can't answer show where onboarding is missing something. Let the AI draft an answer, check it, and publish it to the handbook."
       />
       <div className="flex flex-wrap gap-4">
         <Card as="section" className="flex min-w-0 flex-[2_1_420px] flex-col gap-3">
@@ -155,14 +175,32 @@ export function QuestionsTab({ asks }: { asks: HrAsk[] }) {
           ) : (
             <ul className="m-0 flex list-none flex-col p-0">
               {gapList.map((g) => (
-                <li key={g.text} className="flex flex-wrap items-center gap-3 border-t border-[#EEF0F3] py-3 first:border-0 first:pt-0">
-                  <span className="flex-1 text-[14px] font-semibold">{g.text}</span>
-                  <span className="text-[13px]" style={{ color: C.muted }}>
-                    {[...g.teams].join(", ")} · {ago(g.last)}
-                  </span>
-                  <Chip bg={g.count > 1 ? "#FFE7CC" : "#ECEEF1"} fg={g.count > 1 ? "#6E3600" : "#343A45"}>
-                    Asked {g.count}×
-                  </Chip>
+                <li key={g.text} className="flex flex-col gap-3 border-t border-[color:var(--hr-line-soft)] py-3 first:border-0 first:pt-0">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="flex-1 text-[14px] font-semibold">{g.text}</span>
+                    <span className="text-[13px]" style={{ color: C.muted }}>
+                      {[...g.teams].join(", ")} · {ago(g.last)}
+                    </span>
+                    <Chip bg={g.count > 1 ? "var(--hr-amber-bg)" : "var(--hr-neutral-bg)"} fg={g.count > 1 ? "var(--hr-amber-fg)" : "var(--hr-neutral-fg)"}>
+                      Asked {g.count}×
+                    </Chip>
+                    {onDraft && editing !== g.text && (
+                      <Button variant="muted" className="!min-h-9 !px-3 text-[13px]" onClick={() => setEditing(g.text)}>
+                        <span aria-hidden="true">✦ </span>Draft answer with AI
+                      </Button>
+                    )}
+                  </div>
+                  {onDraft && onPublish && editing === g.text && (
+                    <GapEditor
+                      gap={g}
+                      onDraft={onDraft}
+                      onCancel={() => setEditing(null)}
+                      onPublish={async (input) => {
+                        await onPublish(input);
+                        setEditing(null);
+                      }}
+                    />
+                  )}
                 </li>
               ))}
             </ul>
@@ -177,8 +215,156 @@ export function QuestionsTab({ asks }: { asks: HrAsk[] }) {
               </li>
             ))}
           </ol>
+          {added.length > 0 && (
+            <>
+              <h2 className="m-0 mt-3 text-[16px] font-bold">Added by HR</h2>
+              <ul className="m-0 flex flex-col gap-2 pl-5 text-[14px]">
+                {added.map((h) => (
+                  <li key={h.id}>{h.title}</li>
+                ))}
+              </ul>
+            </>
+          )}
         </Card>
       </div>
+    </div>
+  );
+}
+
+// AI drafts, HR checks and fills in the [HR: ...] parts, then publishes
+function GapEditor({
+  gap,
+  onDraft,
+  onCancel,
+  onPublish,
+}: {
+  gap: Gap;
+  onDraft: (questions: string[]) => Promise<HandbookDraft>;
+  onCancel: () => void;
+  onPublish: (input: HandbookInput) => Promise<void>;
+}) {
+  const id = useId();
+  const [draft, setDraft] = useState<HandbookDraft | null>(null);
+  const [title, setTitle] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [keywords, setKeywords] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const run = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const d = await onDraft([...gap.questions]);
+      setDraft(d);
+      setTitle(d.title);
+      setAnswer(d.answer);
+      setKeywords(d.keywords.join(", "));
+    } catch {
+      setError("Couldn't draft an answer. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const unfilled = title.includes(DRAFT_PLACEHOLDER) || answer.includes(DRAFT_PLACEHOLDER);
+  const canPublish = !!title.trim() && !!answer.trim() && !unfilled && !busy;
+
+  const publish = async () => {
+    if (!canPublish) return;
+    setBusy(true);
+    setError("");
+    try {
+      await onPublish({
+        title: title.trim(),
+        answer: answer.trim(),
+        keywords: keywords.split(",").map((k) => k.trim()).filter(Boolean),
+        askIds: gap.ids,
+      });
+    } catch {
+      setError("Couldn't publish. Please try again.");
+      setBusy(false);
+    }
+  };
+
+  const field = "w-full rounded-xl border border-[color:var(--hr-input-border)] bg-[color:var(--hr-surface)] px-3.5 text-[14px] outline-none focus:ring-2 focus:ring-[color:var(--hr-blue)]";
+
+  if (!draft) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-[color:var(--hr-blue-soft)] p-3.5">
+        <p className="m-0 flex-1 text-[13.5px]" style={{ color: C.blueText }}>
+          The AI writes a first draft from {gap.questions.size === 1 ? "this question" : `these ${gap.questions.size} questions`}. It never makes up company facts: those are left as [HR: …] for you to fill in.
+        </p>
+        <Button onClick={run} disabled={busy}>
+          {busy ? "Drafting…" : "Draft it"}
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        {error && (
+          <p role="alert" className="m-0 w-full text-[13px]" style={{ color: "var(--hr-red-fg)" }}>
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl bg-[color:var(--hr-subtle)] p-4">
+      <p className="m-0 text-[12.5px]" style={{ color: C.muted }}>
+        Draft by {draft.source === "gemini" ? "Gemini" : "the offline helper (add a Gemini key for a full draft)"}. Check every word before publishing.
+      </p>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`${id}-title`} className="text-[13px] font-semibold">
+          Handbook title
+        </label>
+        <input id={`${id}-title`} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} className={`${field} min-h-11`} />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`${id}-answer`} className="text-[13px] font-semibold">
+          Answer new hires will see
+        </label>
+        <textarea
+          id={`${id}-answer`}
+          value={answer}
+          onChange={(e) => setAnswer(e.target.value)}
+          maxLength={1000}
+          rows={4}
+          aria-describedby={unfilled ? `${id}-unfilled` : undefined}
+          className={`${field} resize-y py-2.5 leading-relaxed`}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`${id}-kw`} className="text-[13px] font-semibold">
+          Search words <span style={{ color: C.muted }}>(comma separated)</span>
+        </label>
+        <input id={`${id}-kw`} value={keywords} onChange={(e) => setKeywords(e.target.value)} className={`${field} min-h-11`} />
+      </div>
+      {unfilled && (
+        <p id={`${id}-unfilled`} className="m-0 text-[13px] font-semibold" style={{ color: "var(--hr-amber-fg)" }}>
+          Replace the [HR: …] parts with the real details before publishing.
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="m-0 text-[13px]" style={{ color: "var(--hr-red-fg)" }}>
+          {error}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={publish} disabled={!canPublish}>
+          {busy ? "Publishing…" : "Publish to handbook"}
+        </Button>
+        <Button variant="ghost" onClick={run} disabled={busy}>
+          Redraft
+        </Button>
+        <Button variant="ghost" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+      </div>
+      <p className="m-0 text-[12.5px]" style={{ color: C.muted }}>
+        Publishing adds it to Ask WorkPalz straight away and lets the {gap.count === 1 ? "new hire who asked" : `${gap.count} new hires who asked`} know.
+      </p>
     </div>
   );
 }
@@ -199,15 +385,15 @@ export function FollowUpsTab({ actions, onStatus }: { actions: Action[]; onStatu
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {actions.map((a) => (
               <li key={a.id}>
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl p-3 hover:bg-[#F6F7F9]">
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl p-3 hover:bg-[color:var(--hr-bg)]">
                   <input
                     type="checkbox"
                     checked={a.status === "done"}
                     onChange={(e) => onStatus(a.id, e.target.checked ? "done" : "open")}
-                    className="mt-0.5 h-5 w-5 shrink-0 accent-[#1F5FE0]"
+                    className="mt-0.5 h-5 w-5 shrink-0 accent-[color:var(--hr-blue)]"
                   />
                   <span className="flex flex-col gap-1">
-                    <span className={`text-[14.5px] ${a.status === "done" ? "line-through" : ""}`} style={{ color: a.status === "done" ? "#5F6673" : C.text }}>
+                    <span className={`text-[14.5px] ${a.status === "done" ? "line-through" : ""}`} style={{ color: a.status === "done" ? "var(--hr-muted)" : C.text }}>
                       {a.action}
                     </span>
                     <span className="text-[12.5px]" style={{ color: C.muted }}>
@@ -239,7 +425,7 @@ export function CheckInsTab({ checkIns }: { checkIns: HrCheckIn[] }) {
           <table className="w-full min-w-[760px] border-collapse">
             <caption className="sr-only">Weekly check-ins from new hires</caption>
             <thead style={{ color: C.muted }}>
-              <tr className="border-b border-[#EEF0F3]">
+              <tr className="border-b border-[color:var(--hr-line-soft)]">
                 <th scope="col" className={th}>From</th>
                 <th scope="col" className={th}>Question</th>
                 <th scope="col" className={th}>Answer</th>
@@ -251,7 +437,7 @@ export function CheckInsTab({ checkIns }: { checkIns: HrCheckIn[] }) {
               {sorted.map((c) => {
                 const m = MOODS.find((x) => x.id === c.mood)!;
                 return (
-                  <tr key={c.id} className="border-b border-[#EEF0F3] last:border-0">
+                  <tr key={c.id} className="border-b border-[color:var(--hr-line-soft)] last:border-0">
                     <th scope="row" className={`${td} text-left font-semibold`}>
                       {c.name ?? `${c.team} new hire`}
                       <div className="text-[12.5px] font-normal" style={{ color: C.muted }}>
@@ -263,7 +449,7 @@ export function CheckInsTab({ checkIns }: { checkIns: HrCheckIn[] }) {
                       {c.question}
                     </td>
                     <td className={td}>
-                      <Chip bg="#F3F4F6" fg="#2E333C">
+                      <Chip bg="var(--hr-neutral-bg)" fg="var(--hr-text2)">
                         <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full" style={{ background: m.color }} />
                         {m.label}
                       </Chip>

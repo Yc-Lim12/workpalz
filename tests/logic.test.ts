@@ -99,3 +99,83 @@ describe("Closing the loop", () => {
     expect(store.myNotices("e5")[0].body).toContain("Broken keyboard");
   });
 });
+
+describe("Ping a colleague", () => {
+  it("a reply reaches the sender as a notice from that colleague", () => {
+    const ping = store.addPing({ fromId: "e5", toId: "p1", toName: "Ahmad Zaki", message: "Got 5 minutes?" });
+    store.replyToPing(ping.id, "Ahmad Zaki", "Sure, come over");
+    expect(store.myPings("e5")[0].reply).toBe("Sure, come over");
+    const n = store.myNotices("e5")[0];
+    expect(n.from).toBe("Ahmad Zaki");
+    expect(n.title).toBe("Ahmad replied");
+  });
+
+  it("pings never show up in any HR view, and are erased with my data", () => {
+    store.addPing({ fromId: "e5", toId: "p3", toName: "Ravi Kumar", message: "VPN secret-ping-text" });
+    const hr = JSON.stringify([store.hrCheckIns(), store.hrAsks(), store.hrRequests(), store.hrStats("All"), store.hrActions()]);
+    expect(hr).not.toContain("secret-ping-text");
+    store.deleteMyData("e5");
+    expect(store.myPings("e5")).toHaveLength(0);
+  });
+});
+
+describe("HR assistant", () => {
+  it("answers offline from the dashboard data and never leaks names", async () => {
+    const { askAssistant } = await import("../src/main/assistant");
+    store.addCheckIn({ employeeId: "e2", team: "Engineering", week: 2, question: "q", mood: "stuck", note: "Blocked on staging", shareName: true });
+    const r = await askAssistant([{ role: "user", text: "Which requests have waited longest in Engineering?" }], { tab: "requests", team: "All", role: "hr" });
+    expect(r.source).toBe("offline");
+    expect(r.answer).toMatch(/open request/);
+    const all = await askAssistant([{ role: "user", text: "What are new hires saying this week?" }], { tab: "checkins", team: "Engineering", role: "hr" });
+    for (const e of store.employees()) {
+      expect(r.answer).not.toContain(e.name);
+      expect(all.answer).not.toContain(e.name);
+    }
+  });
+});
+
+describe("Handbook gaps", () => {
+  it("offline drafts leave company facts as placeholders", async () => {
+    const { draftHandbookEntry } = await import("../src/main/assistant");
+    const d = await draftHandbookEntry(["how do I get access to the staging server"]);
+    expect(d.source).toBe("offline");
+    expect(d.answer).toContain("[HR:");
+    expect(d.keywords).toContain("staging");
+  });
+
+  it("publishing answers the gap, tells the askers, and Ask WorkPalz finds it", async () => {
+    const gapIds = store.hrAsks().filter((a) => !a.answered && /staging/.test(a.question)).map((a) => a.id);
+    expect(gapIds.length).toBe(2);
+    const before = store.hrStats("All").unanswered;
+    const told = store.publishHandbookEntry({
+      title: "Staging server access",
+      answer: "Request it in the IT portal under Access. Your lead approves it within a day.",
+      keywords: ["staging", "staging server"],
+      askIds: gapIds,
+    });
+    expect(told).toBe(2);
+    expect(store.hrStats("All").unanswered).toBe(before - 2);
+    expect(store.myNotices("e2")[0].title).toBe("Your question has an answer");
+    const { result } = await answerQuestion("how do I get on the staging server?");
+    expect(result.answered).toBe(true);
+    expect(result.entry?.title).toBe("Staging server access");
+  });
+});
+
+describe("Manager view", () => {
+  it("a manager's assistant sees only their team, with no notes or request details", async () => {
+    const { askAssistant } = await import("../src/main/assistant");
+    const r = await askAssistant([{ role: "user", text: "Which requests have waited longest?" }], { tab: "overview", team: "Marketing", role: "manager" });
+    expect(r.answer).not.toMatch(/Engineering|IDE|staging|licence/i);
+    const c = await askAssistant([{ role: "user", text: "What are new hires saying this week?" }], { tab: "overview", team: "Engineering", role: "manager" });
+    expect(c.answer).not.toContain("Still waiting on my IDE");
+    expect(c.answer).not.toContain("staging server");
+  });
+
+  it("impact counts resolved requests and closed handbook gaps", () => {
+    const m = store.hrImpact("Marketing");
+    expect(m.requestsResolved).toBe(1);
+    expect(m.avgDaysToResolve).toBeGreaterThan(0);
+    expect(store.hrImpact("Engineering").oldestOpenDays).toBeGreaterThanOrEqual(5);
+  });
+});

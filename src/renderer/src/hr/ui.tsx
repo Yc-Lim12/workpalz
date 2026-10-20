@@ -1,14 +1,14 @@
-// Shared bits for the HR dashboard. Colours chosen for WCAG AA contrast on white and #F6F7F9.
+// Shared bits for the HR dashboard. Colours are theme variables (index.css), WCAG AA in light and dark.
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 export const C = {
-  text: "#14161A",
-  muted: "#545B69", // 6.9:1 on white
-  border: "#D5D9E0",
-  blue: "#1F5FE0", // white text 5.5:1
-  blueText: "#163F99",
-  amberBg: "#FFF4E8",
-  amberText: "#7A3C00",
+  text: "var(--hr-text)",
+  muted: "var(--hr-muted)", // 6.6:1 or better on surfaces in both themes
+  border: "var(--hr-border)",
+  blue: "var(--hr-blue)",
+  blueText: "var(--hr-blue-text)",
+  amberBg: "var(--hr-amber-soft)",
+  amberText: "var(--hr-amber-fg)",
 };
 
 export function ago(iso: string) {
@@ -22,7 +22,7 @@ export function ago(iso: string) {
 }
 
 export function Card({ children, className = "", as: Tag = "div" }: { children: ReactNode; className?: string; as?: "div" | "section" | "article" }) {
-  return <Tag className={`rounded-2xl bg-white p-5 ${className}`}>{children}</Tag>;
+  return <Tag className={`rounded-2xl bg-[color:var(--hr-surface)] p-5 ${className}`}>{children}</Tag>;
 }
 
 export function Chip({ children, bg, fg }: { children: ReactNode; bg: string; fg: string }) {
@@ -35,10 +35,10 @@ export function Chip({ children, bg, fg }: { children: ReactNode; bg: string; fg
 
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "dark" | "ghost" | "muted" };
 const V = {
-  primary: "bg-[#1F5FE0] text-white hover:bg-[#1A52C4]",
-  dark: "bg-[#14161A] text-white hover:bg-[#2A2D33]",
-  ghost: "bg-transparent text-[#3A404B] hover:bg-[#E6E8EC]",
-  muted: "bg-[#E6E8EC] text-[#2E333C]",
+  primary: "bg-[color:var(--hr-blue-bg)] text-white hover:bg-[color:var(--hr-blue-bg-hover)]",
+  dark: "bg-[color:var(--hr-inverse)] text-white hover:bg-[color:var(--hr-inverse-hover)]",
+  ghost: "bg-transparent text-[color:var(--hr-text3)] hover:bg-[color:var(--hr-chip)]",
+  muted: "bg-[color:var(--hr-chip)] text-[color:var(--hr-text2)]",
 };
 export function Button({ variant = "primary", className = "", ...rest }: BtnProps) {
   return (
@@ -52,7 +52,7 @@ export function Button({ variant = "primary", className = "", ...rest }: BtnProp
 
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <p className="m-0 rounded-2xl border border-dashed border-[#B8BEC8] bg-white p-8 text-center text-[14px]" style={{ color: C.muted }}>
+    <p className="m-0 rounded-2xl border border-dashed border-[color:var(--hr-dashed)] bg-[color:var(--hr-surface)] p-8 text-center text-[14px]" style={{ color: C.muted }}>
       {children}
     </p>
   );

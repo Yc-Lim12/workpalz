@@ -47,6 +47,12 @@ export type HandbookEntry = {
   linkLabel?: string;
 };
 
+// HR fills a handbook gap: the AI drafts, HR edits and publishes
+export type HandbookDraft = { title: string; answer: string; keywords: string[]; source: "gemini" | "offline" };
+export type HandbookInput = { title: string; answer: string; keywords: string[]; askIds: string[] };
+// Drafts mark facts the AI can't know like this; they must be filled in before publishing
+export const DRAFT_PLACEHOLDER = "[HR:";
+
 export type Ask = {
   id: string;
   employeeId: string;
@@ -133,6 +139,7 @@ export type Action = {
   owner: string;
   status: "open" | "done";
   createdAt: string;
+  doneAt?: string;
 };
 
 export type Notice = {
@@ -142,12 +149,52 @@ export type Notice = {
   body: string;
   createdAt: string;
   read: boolean;
+  from?: string; // set when a colleague replied to a ping (otherwise it's from HR)
 };
+
+// ---------- Ping a colleague ----------
+// Person to person only: pings never reach the HR window.
+
+export type Availability = "available" | "busy" | "away";
+
+export type Colleague = {
+  id: string;
+  name: string;
+  role: string;
+  team: string;
+  helpsWith: string[];
+  availability: Availability;
+};
+
+export type Ping = {
+  id: string;
+  fromId: string;
+  toId: string;
+  toName: string;
+  message: string;
+  reply: string | null;
+  createdAt: string;
+};
+
+export type PingInput = { colleagueId: string; message: string };
 
 // ---------- What HR is allowed to see (no employee IDs) ----------
 
 export type HrCheckIn = Omit<CheckIn, "employeeId" | "shareName"> & { name: string | null };
 export type HrAsk = { id: string; team: string; week: number; question: string; answered: boolean; topic: string | null; createdAt: string };
+
+// What WorkPalz has changed so far: proof the loop works
+export type HrImpact = {
+  requestsResolved: number;
+  avgDaysToResolve: number | null;
+  oldestOpenDays: number | null;
+  followUpsDone: number;
+  followUpsOpen: number;
+  peopleTold: number; // new hires who heard "here's what we did"
+  handbookAdded: number;
+  questionsNowAnswered: number;
+  checkInRate: { thisWeek: number; lastWeek: number }; // % of new hires
+};
 
 export type HrStats = {
   newHires: number;
@@ -159,6 +206,13 @@ export type HrStats = {
   unanswered: number;
   questions: number;
 };
+
+// ---------- HR assistant ----------
+
+export type AssistantMessage = { role: "user" | "assistant"; text: string };
+// A manager only ever sees their own team, as patterns (no quotes, no single requests)
+export type AssistantView = { tab: "overview" | "requests" | "questions" | "followups" | "checkins"; team: string; role: "hr" | "manager" };
+export type AssistantReply = { answer: string; suggestions: string[]; source: "gemini" | "offline" };
 
 // ---------- Island ----------
 
@@ -173,15 +227,26 @@ export type IslandEvent =
   | { type: "open" }
   | { type: "open-ask" }
   | { type: "open-request" }
+  | { type: "open-ping" }
   | { type: "toggle-focus" }
+  | { type: "toggle-hidden" }
+  | { type: "show" }
+  | { type: "hide" }
   | { type: "blur" }
   | { type: "collapse" };
 
 // Global shortcuts the person can set in Settings ("" = not set)
-export type Shortcuts = { main: string; ask: string; request: string; focus: string };
-export const DEFAULT_SHORTCUTS: Shortcuts = { main: "CommandOrControl+Alt+Space", ask: "", request: "", focus: "" };
+export type Shortcuts = { main: string; ask: string; request: string; ping: string; focus: string; toggle: string };
+export const DEFAULT_SHORTCUTS: Shortcuts = {
+  main: "CommandOrControl+Alt+Space",
+  ask: "",
+  request: "",
+  ping: "",
+  focus: "",
+  toggle: "CommandOrControl+Alt+B",
+};
 
-export type MyDataSummary = { checkIns: number; questions: number; requests: number };
+export type MyDataSummary = { checkIns: number; questions: number; requests: number; pings: number };
 
 // ---------- window.workpalz ----------
 
@@ -204,6 +269,9 @@ export type WorkPalzApi = {
   submitRequest: (input: RequestInput) => Promise<void>;
   listMyRequests: () => Promise<SupportRequest[]>;
   listMyNotices: () => Promise<Notice[]>;
+  listColleagues: () => Promise<Colleague[]>;
+  sendPing: (input: PingInput) => Promise<void>;
+  listMyPings: () => Promise<Ping[]>;
   markNoticeRead: (id: string) => Promise<void>;
   getMyData: () => Promise<MyDataSummary>;
   exportMyData: () => Promise<boolean>;
@@ -211,6 +279,7 @@ export type WorkPalzApi = {
 
   // HR
   hrStats: (team: string) => Promise<HrStats>;
+  hrImpact: (team: string) => Promise<HrImpact>;
   hrTeams: () => Promise<string[]>;
   hrCheckIns: () => Promise<HrCheckIn[]>;
   hrAsks: () => Promise<HrAsk[]>;
@@ -221,5 +290,9 @@ export type WorkPalzApi = {
   listActions: () => Promise<Action[]>;
   addAction: (themeId: string) => Promise<void>;
   setActionStatus: (id: string, status: Action["status"]) => Promise<void>;
+  draftHandbook: (questions: string[]) => Promise<HandbookDraft>;
+  publishHandbook: (input: HandbookInput) => Promise<number>;
+  listHandbookAdded: () => Promise<HandbookEntry[]>;
+  askAssistant: (messages: AssistantMessage[], view: AssistantView) => Promise<AssistantReply>;
   resetDemo: () => Promise<void>;
 };

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { MOODS, REQUEST_CATEGORIES, STATUS_LABEL, type AskResult, type CheckInInput, type Mood, type MyDataSummary, type Notice, type RequestCategory, type RequestInput, type Shortcuts, type SupportRequest, DEFAULT_SHORTCUTS } from "../../../shared/types";
+import { MOODS, REQUEST_CATEGORIES, STATUS_LABEL, type AskResult, type Availability, type Colleague, type Ping, type PingInput, type CheckInInput, type Mood, type MyDataSummary, type Notice, type RequestCategory, type RequestInput, type Shortcuts, type SupportRequest, DEFAULT_SHORTCUTS } from "../../../shared/types";
 import { AMBER, BLUE, MUTED } from "./theme";
 import { Btn, Choice, Dot, Header, inputClass } from "./ui";
 
@@ -13,7 +13,7 @@ const clearDrafts = (prefix: string) => {
   for (const k of Object.keys(drafts)) if (k.startsWith(prefix)) delete drafts[k];
 };
 
-export function MenuView(p: { pending: boolean; focusRunning: boolean; focusLeft: string; openRequests: number; onOpen: (v: "ask" | "request" | "checkin" | "privacy"| "settings") => void; onToggleFocus: () => void; onClose: () => void; }) {
+export function MenuView(p: { pending: boolean; focusRunning: boolean; focusLeft: string; openRequests: number; onOpen: (v: "ask" | "request" | "ping" | "checkin" | "privacy" | "settings") => void; onToggleFocus: () => void; onHide: () => void; onClose: () => void; }) {
   const tile = "flex min-h-[76px] w-full cursor-pointer flex-col items-start justify-between gap-1 rounded-2xl [background-color:var(--bg)] px-3.5 py-3 text-left transition hover:opacity-80 active:scale-[0.97] border [border-color:var(--line)]";
   return (
     <section aria-labelledby="menu-title" className="flex flex-col gap-3">
@@ -29,6 +29,12 @@ export function MenuView(p: { pending: boolean; focusRunning: boolean; focusLeft
           <button type="button" className={tile} onClick={() => p.onOpen("request")}>
             <span className="text-[12px]" style={{ color: MUTED }}>{p.openRequests ? `${p.openRequests} open` : "IT or HR"}</span>
             <span className="text-[14px] font-semibold [color:var(--ink)]">Quick request</span>
+          </button>
+        </li>
+        <li className="col-span-2">
+          <button type="button" className={`${tile} !min-h-[60px]`} onClick={() => p.onOpen("ping")}>
+            <span className="text-[12px]" style={{ color: MUTED }}>Find someone who can help</span>
+            <span className="text-[14px] font-semibold [color:var(--ink)]">Ping a colleague</span>
           </button>
         </li>
         <li>
@@ -50,6 +56,7 @@ export function MenuView(p: { pending: boolean; focusRunning: boolean; focusLeft
       <div className="flex items-center justify-between gap-2 mt-1">
         <Btn variant="ghost" className="!min-h-10 !px-2 text-[13px]" onClick={() => p.onOpen("privacy")}>Your privacy</Btn>
         <Btn variant="ghost" className="!min-h-10 !px-2 text-[13px]" onClick={() => p.onOpen("settings")}>Settings</Btn>
+        <Btn variant="ghost" className="!min-h-10 !px-2 text-[13px]" onClick={p.onHide}>Hide</Btn>
         <Btn variant="ghost" className="!min-h-10 !px-2 text-[13px]" onClick={p.onClose}>Close</Btn>
       </div>
     </section>
@@ -232,7 +239,9 @@ export function NoticeView(p: { notice: Notice; more: number; onDone: () => void
     <section aria-labelledby="nt-title" className="flex flex-col gap-3">
       <Header id="nt-title" color={BLUE} title={p.notice.title} right={p.more ? `${p.more} more` : "just now"} />
       <p className="m-0 whitespace-pre-line text-[15px] leading-relaxed [color:var(--ink)]">{p.notice.body}</p>
-      <p className="m-0 text-[12px]" style={{ color: MUTED }}>Thanks for speaking up. Your feedback led to this.</p>
+      <p className="m-0 text-[12px]" style={{ color: MUTED }}>
+        {p.notice.from ? `${p.notice.from} replied to your ping.` : "Thanks for speaking up. Your feedback led to this."}
+      </p>
       <Btn variant="primary" data-autofocus onClick={p.onDone}>{p.more ? "Next" : "Got it"}</Btn>
     </section>
   );
@@ -257,6 +266,7 @@ export function PrivacyView(p: { getData: () => Promise<MyDataSummary>; onExport
             <li>Check-ins you send</li>
             <li>Questions you ask</li>
             <li>Requests you make</li>
+            <li>Pings you send</li>
           </ul>
         </div>
         <div className="rounded-xl [background-color:var(--bg)] p-3 border [border-color:var(--line)]">
@@ -269,9 +279,9 @@ export function PrivacyView(p: { getData: () => Promise<MyDataSummary>; onExport
         </div>
       </div>
       <p className="m-0 text-[12.5px] leading-snug [color:var(--muted)]">
-        HR sees check-ins and questions by team only, unless you share your name. Names are never sent to the AI. Nothing here is used for performance reviews.
+        HR sees check-ins and questions by team only, unless you share your name. Pings go only to the person you pick, never to HR. Names are never sent to the AI. Nothing here is used for performance reviews.
       </p>
-      {data && <p className="m-0 text-[13px]" style={{ color: MUTED }}>Stored now: {plural(data.checkIns, "check-in")}, {plural(data.questions, "question")}, {plural(data.requests, "request")}.</p>}
+      {data && <p className="m-0 text-[13px]" style={{ color: MUTED }}>Stored now: {plural(data.checkIns, "check-in")}, {plural(data.questions, "question")}, {plural(data.requests, "request")}, {plural(data.pings, "ping")}.</p>}
       
       <div className="flex flex-wrap gap-2">
         <Btn data-autofocus onClick={async () => setMsg((await p.onExport()) ? "Your data was saved." : "Download cancelled.")}>Download my data</Btn>
@@ -283,6 +293,127 @@ export function PrivacyView(p: { getData: () => Promise<MyDataSummary>; onExport
       </div>
       <p role="status" className="m-0 min-h-[1em] text-[13px] text-[var(--good)]">{msg}</p>
     </section>
+  );
+}
+
+// ---------- Ping a colleague ----------
+
+const AVAILABILITY: Record<Availability, { label: string; color: string }> = {
+  available: { label: "Available", color: "var(--good)" },
+  busy: { label: "In a meeting", color: "var(--amber)" },
+  away: { label: "Away", color: "var(--muted)" },
+};
+
+const QUICK_MESSAGES = ["Got 5 minutes to help me?", "Can you look at something with me?", "Who should I ask about this?"];
+
+const initials = (name: string) => name.split(" ").map((w) => w[0]).slice(0, 2).join("");
+const firstName = (name: string) => name.split(" ")[0];
+
+export function PingView(p: { colleagues: Colleague[]; mine: Ping[]; onSubmit: (i: PingInput) => Promise<void>; onBack: () => void }) {
+  const [q, setQ] = useDraft("ping.q", "");
+  const [pickedId, setPickedId] = useDraft<string | null>("ping.who", null);
+  const [message, setMessage] = useDraft("ping.msg", "");
+  const [sending, setSending] = useState(false);
+  const picked = p.colleagues.find((c) => c.id === pickedId);
+
+  // Search by name, role, team or topic ("VPN", "staging server")
+  const needle = q.trim().toLowerCase();
+  const matches = p.colleagues.filter((c) =>
+    !needle || [c.name, c.role, c.team, ...c.helpsWith].some((s) => s.toLowerCase().includes(needle))
+  );
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!picked || !message.trim() || sending) return;
+    setSending(true);
+    await p.onSubmit({ colleagueId: picked.id, message: message.trim() });
+    clearDrafts("ping.");
+  };
+
+  if (picked) {
+    const a = AVAILABILITY[picked.availability];
+    return (
+      <form onSubmit={submit} aria-labelledby="ping-title" className="flex flex-col gap-3">
+        <Header id="ping-title" color={BLUE} title={`Ping ${firstName(picked.name)}`} right={a.label} onBack={() => setPickedId(null)} />
+        <PersonRow c={picked} />
+        {picked.availability === "away" && (
+          <p className="m-0 text-[12.5px]" style={{ color: MUTED }}>{firstName(picked.name)} is away. They'll see your ping when they're back.</p>
+        )}
+        <div className="flex flex-wrap gap-1.5">
+          {QUICK_MESSAGES.map((m) => (
+            <button key={m} type="button" onClick={() => setMessage(m)} className="min-h-9 cursor-pointer rounded-full [background-color:var(--bg)] px-3 text-[12.5px] [color:var(--ink)] hover:opacity-80 border [border-color:var(--line)]">
+              {m}
+            </button>
+          ))}
+        </div>
+        <label htmlFor="ping-msg" className="sr-only">Message</label>
+        <textarea id="ping-msg" data-autofocus value={message} onChange={(e) => setMessage(e.target.value)} maxLength={200} rows={2} placeholder="e.g. Can you help me get the staging server running?" className={`${inputClass} resize-none py-2.5 leading-snug`} />
+        <div className="flex gap-2">
+          <Btn type="submit" variant="primary" className="flex-[2]" disabled={!message.trim() || sending}>{sending ? "Sending…" : `Ping ${firstName(picked.name)}`}</Btn>
+          <Btn className="flex-1" onClick={() => setPickedId(null)}>Someone else</Btn>
+        </div>
+      </form>
+    );
+  }
+
+  const recent = p.mine.slice(0, 2);
+  return (
+    <section aria-labelledby="ping-title" className="flex flex-col gap-3">
+      <Header id="ping-title" color={BLUE} title="Ping a colleague" right="Only they see it" onBack={p.onBack} />
+      <form role="search" onSubmit={(e) => e.preventDefault()}>
+        <label htmlFor="ping-search" className="sr-only">Search by name or topic</label>
+        <input id="ping-search" data-autofocus value={q} onChange={(e) => setQ(e.target.value)} maxLength={60} placeholder="Name or topic, e.g. VPN, staging server" className={`${inputClass} min-h-11`} />
+      </form>
+
+      <ul aria-label="Colleagues" className="m-0 flex max-h-[250px] list-none flex-col gap-1.5 overflow-y-auto p-0 pr-1">
+        {matches.map((c) => (
+          <li key={c.id}>
+            <button type="button" onClick={() => setPickedId(c.id)} className="w-full cursor-pointer rounded-2xl text-left transition hover:opacity-80 active:scale-[0.98]">
+              <PersonRow c={c} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      {matches.length === 0 && (
+        <p className="m-0 text-[13px]" style={{ color: MUTED }}>No one found for "{q.trim()}". Try Ask WorkPalz or a Quick request.</p>
+      )}
+
+      {recent.length > 0 && (
+        <div className="flex flex-col gap-1.5 border-t [border-color:var(--line)] pt-3">
+          <h3 className="m-0 text-[12.5px] font-semibold" style={{ color: MUTED }}>Your pings</h3>
+          <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+            {recent.map((pg) => (
+              <li key={pg.id} className="text-[13px] leading-snug [color:var(--ink)]">
+                <span className="font-semibold">{firstName(pg.toName)}:</span>{" "}
+                {pg.reply ? <span>"{pg.reply}"</span> : <span style={{ color: MUTED }}>waiting for a reply</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PersonRow({ c }: { c: Colleague }) {
+  const a = AVAILABILITY[c.availability];
+  return (
+    <div className="flex items-start gap-3 rounded-2xl [background-color:var(--bg)] border [border-color:var(--line)] px-3 py-2.5">
+      <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold [background-color:var(--surface)] [color:var(--blue)] border [border-color:var(--line)]">
+        {initials(c.name)}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="flex items-center gap-2 text-[14px] font-semibold [color:var(--ink)]">
+          {c.name}
+          <span className="flex items-center gap-1 text-[11.5px] font-medium" style={{ color: MUTED }}>
+            <Dot color={a.color} />
+            {a.label}
+          </span>
+        </span>
+        <span className="truncate text-[12px]" style={{ color: MUTED }}>{c.role} · {c.team}</span>
+        <span className="text-[12px] [color:var(--ink)]">Helps with: {c.helpsWith.join(", ")}</span>
+      </span>
+    </div>
   );
 }
 
@@ -351,10 +482,10 @@ function ShortcutRow({ label, value, onChange }: { label: string, value: string,
   );
 }
 
-const isMac = navigator.platform.toUpperCase().includes("MAC");
+export const isMac = navigator.platform.toUpperCase().includes("MAC");
 
 // "CommandOrControl" is Electron's name for Cmd on Mac and Ctrl elsewhere
-function displayShortcut(s: string) {
+export function displayShortcut(s: string) {
   return s.replace("CommandOrControl", isMac ? "Cmd" : "Ctrl");
 }
 
@@ -400,8 +531,10 @@ export function SettingsView(p: { onBack: () => void }) {
       <div className="flex flex-col gap-2 max-h-[260px] overflow-y-auto pr-1 pb-1">
         <ShortcutRow label="Open Main Menu" value={shortcuts.main} onChange={(v) => updateShortcut('main', v)} />
         <ShortcutRow label="Quick Request (IT/HR)" value={shortcuts.request} onChange={(v) => updateShortcut('request', v)} />
+        <ShortcutRow label="Ping a Colleague" value={shortcuts.ping} onChange={(v) => updateShortcut('ping', v)} />
         <ShortcutRow label="Ask WorkPalz" value={shortcuts.ask} onChange={(v) => updateShortcut('ask', v)} />
         <ShortcutRow label="Toggle Focus Timer" value={shortcuts.focus} onChange={(v) => updateShortcut('focus', v)} />
+        <ShortcutRow label="Show / Hide Island" value={shortcuts.toggle} onChange={(v) => updateShortcut('toggle', v)} />
       </div>
     </section>
   );

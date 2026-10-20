@@ -22,10 +22,78 @@ html:not(.hr) textarea {
 }
 
 /* ---------- HR window ---------- */
+/* Light is the default; the header toggle sets data-theme="dark" (saved per computer). */
+html.hr {
+  --hr-bg: #f6f7f9;
+  --hr-surface: #ffffff;
+  --hr-subtle: #f1f3f6;
+  --hr-chip: #e6e8ec;
+  --hr-text: #14161a;
+  --hr-text2: #2e333c;
+  --hr-text3: #3a404b;
+  --hr-muted: #545b69;
+  --hr-line-soft: #eef0f3;
+  --hr-line: #e3e6ea;
+  --hr-border: #d5d9e0;
+  --hr-input-border: #7f8794;
+  --hr-dashed: #b8bec8;
+  --hr-inverse: #14161a;
+  --hr-inverse-hover: #2a2d33;
+  --hr-blue: #1f5fe0;
+  --hr-blue-bg: #1f5fe0;
+  --hr-blue-bg-hover: #1a52c4;
+  --hr-blue-text: #163f99;
+  --hr-blue-soft: #eef3ff;
+  --hr-amber-bg: #ffe7cc;
+  --hr-amber-fg: #6e3600;
+  --hr-amber-soft: #fff4e8;
+  --hr-yellow-bg: #fff1c7;
+  --hr-yellow-fg: #5c4300;
+  --hr-neutral-bg: #eceef1;
+  --hr-neutral-fg: #343a45;
+  --hr-green-bg: #ddf3e7;
+  --hr-green-fg: #185c3b;
+  --hr-red-fg: #8a2e00;
+  color-scheme: light;
+}
+html.hr[data-theme="dark"] {
+  --hr-bg: #0f1114;
+  --hr-surface: #1a1d22;
+  --hr-subtle: #23272e;
+  --hr-chip: #2a2f37;
+  --hr-text: #eceef2;
+  --hr-text2: #d3d7de;
+  --hr-text3: #bcc2cc;
+  --hr-muted: #9ba2ae;
+  --hr-line-soft: #262a31;
+  --hr-line: #2c3139;
+  --hr-border: #3a404a;
+  --hr-input-border: #6b7280;
+  --hr-dashed: #4a515c;
+  --hr-inverse: #2c3240;
+  --hr-inverse-hover: #3a4252;
+  --hr-blue: #7aa7ff;
+  --hr-blue-bg: #2f68e0;
+  --hr-blue-bg-hover: #3d76ee;
+  --hr-blue-text: #a9c4ff;
+  --hr-blue-soft: #1b2741;
+  --hr-amber-bg: #45290c;
+  --hr-amber-fg: #ffc48a;
+  --hr-amber-soft: #2b2012;
+  --hr-yellow-bg: #3a300d;
+  --hr-yellow-fg: #f2d675;
+  --hr-neutral-bg: #2a2f37;
+  --hr-neutral-fg: #cdd2da;
+  --hr-green-bg: #15362a;
+  --hr-green-fg: #8fdcb4;
+  --hr-red-fg: #ffa07c;
+  color-scheme: dark;
+}
 html.hr,
 html.hr body {
-  background: #f6f7f9;
-  --ring: #1f5fe0;
+  background: var(--hr-bg);
+  color: var(--hr-text);
+  --ring: var(--hr-blue);
 }
 html.hr #root {
   overflow-y: auto;

@@ -1,12 +1,13 @@
 // Electron main process: island + HR windows, data, AI, IPC.
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, screen, shell } from "electron";
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { Action, CheckInInput, IslandEvent, IslandLayout, RequestInput, RequestStatus, Shortcuts } from "../shared/types";
-import { DEFAULT_SHORTCUTS, REQUEST_CATEGORIES } from "../shared/types";
+import type { Action, AssistantMessage, AssistantView, CheckInInput, HandbookInput, Colleague, IslandEvent, IslandLayout, Ping, PingInput, RequestInput, RequestStatus, Shortcuts } from "../shared/types";
+import { DEFAULT_SHORTCUTS, DRAFT_PLACEHOLDER, REQUEST_CATEGORIES } from "../shared/types";
 import { loadStore, resetStore, store } from "./store";
 import { analyse } from "./ai";
 import { answerQuestion } from "./ask";
+import { askAssistant, draftHandbookEntry } from "./assistant";
 import { ME_ID, questionForWeek } from "./seed";
 
 const WIN_W = 500;
@@ -14,6 +15,7 @@ const WIN_H = 640;
 
 let island: BrowserWindow | null = null;
 let hr: BrowserWindow | null = null;
+let tray: Tray | null = null;
 let layout: IslandLayout = { notch: false, topInset: 0 };
 let dialogOpen = false;
 
@@ -89,6 +91,31 @@ function createIslandWindow() {
   screen.on("display-metrics-changed", placeIsland);
 }
 
+// ---------- Menu bar / tray icon ----------
+// The island can hide itself, and it has no dock or taskbar entry, so this is
+// the always-visible place to bring it back.
+
+function createTray() {
+  const dir = path.join(__dirname, "../../resources");
+  const icon = nativeImage.createFromPath(path.join(dir, isMac ? "trayTemplate.png" : "tray.png"));
+  if (isMac) icon.setTemplateImage(true); // follows light/dark menu bar
+  tray = new Tray(isMac ? icon : icon.resize({ width: 16, height: 16 }));
+  tray.setToolTip("WorkPalz");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Show WorkPalz", click: () => sendIsland({ type: "show" }) },
+      { label: "Open menu", click: () => { island?.focus(); sendIsland({ type: "open" }); } },
+      { label: "Hide WorkPalz", click: () => sendIsland({ type: "hide" }) },
+      { type: "separator" },
+      { label: "HR dashboard", click: openHrDashboard },
+      { type: "separator" },
+      { label: "Quit WorkPalz", role: "quit" },
+    ])
+  );
+  // Windows: a left click on the tray icon brings the island back straight away
+  tray.on("click", () => { if (!isMac) sendIsland({ type: "show" }); });
+}
+
 // ---------- HR window ----------
 
 function openHrDashboard() {
@@ -132,7 +159,9 @@ function applyShortcuts() {
   register(currentShortcuts.main, () => { island?.focus(); sendIsland({ type: "open" }); });
   register(currentShortcuts.ask, () => { island?.focus(); sendIsland({ type: "open-ask" }); });
   register(currentShortcuts.request, () => { island?.focus(); sendIsland({ type: "open-request" }); });
+  register(currentShortcuts.ping, () => { island?.focus(); sendIsland({ type: "open-ping" }); });
   register(currentShortcuts.focus, () => { island?.focus(); sendIsland({ type: "toggle-focus" }); });
+  register(currentShortcuts.toggle, () => sendIsland({ type: "toggle-hidden" }));
 
   // Default presentation shortcuts
   globalShortcut.register("CommandOrControl+Alt+C", () => sendIsland({ type: "checkin-prompt" }));
@@ -142,6 +171,28 @@ function applyShortcuts() {
     broadcastChange();
     sendIsland({ type: "collapse" });
   });
+}
+
+// ---------- Ping replies (demo only) ----------
+// There's no second person in the demo, so colleagues answer by themselves.
+// Away colleagues don't reply; busy ones take longer.
+
+const REPLIES: Record<Exclude<Colleague["availability"], "away">, string[]> = {
+  available: [
+    "Sure! Come over to my desk, or I can call you in 5 minutes.",
+    "Happy to help. Send me a screenshot and I'll take a look now.",
+  ],
+  busy: ["I'm in a meeting right now. Free at 3pm, I'll come find you then."],
+};
+
+function simulateReply(ping: Ping, c: Colleague) {
+  if (c.availability === "away") return;
+  const options = REPLIES[c.availability];
+  const reply = options[Math.floor(Math.random() * options.length)];
+  setTimeout(() => {
+    store.replyToPing(ping.id, c.name, reply);
+    broadcastChange();
+  }, c.availability === "available" ? 5000 : 9000);
 }
 
 // ---------- IPC ----------
@@ -201,6 +252,21 @@ function registerIpc() {
     broadcastChange();
   });
 
+  ipcMain.handle("colleagues:list", () => store.colleagues());
+  ipcMain.handle("pings:mine", () => store.myPings(ME_ID));
+  ipcMain.handle("ping:send", (_e, input: PingInput) => {
+    const c = store.colleague(String(input.colleagueId));
+    if (!c) throw new Error("Unknown colleague");
+    const ping = store.addPing({
+      fromId: ME_ID,
+      toId: c.id,
+      toName: c.name,
+      message: String(input.message ?? "").trim().slice(0, 200),
+    });
+    broadcastChange();
+    simulateReply(ping, c);
+  });
+
   ipcMain.handle("requests:mine", () => store.myRequests(ME_ID));
   ipcMain.handle("notices:mine", () => store.myNotices(ME_ID));
   ipcMain.handle("notices:read", (_e, id: string) => {
@@ -210,7 +276,7 @@ function registerIpc() {
 
   ipcMain.handle("mydata:summary", () => {
     const d = store.myData(ME_ID);
-    return { checkIns: d.checkIns.length, questions: d.questions.length, requests: d.requests.length };
+    return { checkIns: d.checkIns.length, questions: d.questions.length, requests: d.requests.length, pings: d.pings.length };
   });
 
   ipcMain.handle("mydata:export", async () => {
@@ -235,7 +301,27 @@ function registerIpc() {
   });
 
   ipcMain.handle("hr:teams", () => store.hrTeams());
+  ipcMain.handle("hr:handbook-draft", (_e, questions: string[]) => draftHandbookEntry(Array.isArray(questions) ? questions : []));
+  ipcMain.handle("hr:handbook-added", () => store.handbookAdded());
+  ipcMain.handle("hr:handbook-publish", (_e, input: HandbookInput) => {
+    const title = String(input.title ?? "").trim().slice(0, 80);
+    const answer = String(input.answer ?? "").trim().slice(0, 1000);
+    if (!title || !answer) throw new Error("Title and answer are required");
+    if (answer.includes(DRAFT_PLACEHOLDER) || title.includes(DRAFT_PLACEHOLDER)) throw new Error("Fill in the placeholders first");
+    const keywords = (Array.isArray(input.keywords) ? input.keywords : [])
+      .map((k) => String(k).trim().toLowerCase().slice(0, 40))
+      .filter(Boolean)
+      .slice(0, 12);
+    const askIds = (Array.isArray(input.askIds) ? input.askIds : []).map(String);
+    const notified = store.publishHandbookEntry({ title, answer, keywords, askIds });
+    broadcastChange();
+    return notified;
+  });
+  ipcMain.handle("hr:assistant", (_e, messages: AssistantMessage[], view: AssistantView) =>
+    askAssistant(Array.isArray(messages) ? messages : [], view)
+  );
   ipcMain.handle("hr:stats", (_e, team: string) => store.hrStats(team));
+  ipcMain.handle("hr:impact", (_e, team: string) => store.hrImpact(team));
   ipcMain.handle("hr:checkins", () => store.hrCheckIns());
   ipcMain.handle("hr:asks", () => store.hrAsks());
   ipcMain.handle("hr:requests", () => store.hrRequests());
@@ -276,6 +362,7 @@ app.whenReady().then(() => {
   loadStore();
   registerIpc();
   createIslandWindow();
+  createTray();
 
   applyShortcuts();
 

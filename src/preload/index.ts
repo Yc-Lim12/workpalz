@@ -29,12 +29,16 @@ const api: WorkPalzApi = {
   submitRequest: call("request:add"),
   listMyRequests: call("requests:mine"),
   listMyNotices: call("notices:mine"),
+  listColleagues: call("colleagues:list"),
+  sendPing: call("ping:send"),
+  listMyPings: call("pings:mine"),
   markNoticeRead: call("notices:read"),
   getMyData: call("mydata:summary"),
   exportMyData: call("mydata:export"),
   deleteMyData: call("mydata:delete"),
 
   hrStats: call("hr:stats"),
+  hrImpact: call("hr:impact"),
   hrTeams: call("hr:teams"),
   hrCheckIns: call("hr:checkins"),
   hrAsks: call("hr:asks"),
@@ -45,6 +49,10 @@ const api: WorkPalzApi = {
   listActions: call("actions:list"),
   addAction: call("actions:add"),
   setActionStatus: call("actions:status"),
+  askAssistant: call("hr:assistant"),
+  draftHandbook: call("hr:handbook-draft"),
+  publishHandbook: call("hr:handbook-publish"),
+  listHandbookAdded: call("hr:handbook-added"),
   resetDemo: call("demo:reset"),
 } as WorkPalzApi;
 

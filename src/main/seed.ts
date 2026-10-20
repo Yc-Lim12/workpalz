@@ -1,5 +1,5 @@
 // Fictional demo data for "Lumora Tech". No real people.
-import type { Ask, CheckIn, Employee, Mood, RequestCategory, RequestStatus, SupportRequest } from "../shared/types";
+import type { Ask, CheckIn, Colleague, Employee, Mood, RequestCategory, RequestStatus, SupportRequest } from "../shared/types";
 
 export const ME_ID = "e5"; // the employee using the island in the demo
 
@@ -14,6 +14,16 @@ export const EMPLOYEES: Employee[] = [
   { id: "m3", name: "Kavitha Raj", team: "Marketing", week: 3 },
   { id: "f1", name: "Wei Jie Ong", team: "Finance", week: 6 },
   { id: "f2", name: "Nur Izzah", team: "Finance", week: 7 },
+];
+
+// Experienced staff a new hire can ping for help (not new hires, so not in HR stats)
+export const COLLEAGUES: Colleague[] = [
+  { id: "p1", name: "Ahmad Zaki", role: "Senior Engineer, your buddy", team: "Engineering", helpsWith: ["Codebase", "Code review", "Git", "Staging server"], availability: "available" },
+  { id: "p2", name: "Grace Lim", role: "Engineering Lead", team: "Engineering", helpsWith: ["Priorities", "Architecture", "1:1s"], availability: "busy" },
+  { id: "p3", name: "Ravi Kumar", role: "IT Helpdesk", team: "IT", helpsWith: ["Laptop", "VPN", "Software licences", "System access"], availability: "available" },
+  { id: "p4", name: "Hannah Wong", role: "Marketing Manager", team: "Marketing", helpsWith: ["Campaign budget", "Priorities", "Brand guide"], availability: "away" },
+  { id: "p5", name: "Siti Aminah", role: "HR Partner", team: "HR", helpsWith: ["Leave", "Benefits", "Onboarding"], availability: "available" },
+  { id: "p6", name: "Marcus Tan", role: "Finance Analyst", team: "Finance", helpsWith: ["Expense claims", "Payroll", "Month-end"], availability: "available" },
 ];
 
 // The weekly question changes with the onboarding stage

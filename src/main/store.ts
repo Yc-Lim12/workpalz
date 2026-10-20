@@ -12,18 +12,22 @@ import {
   type Action,
   type Analysis,
   type Ask,
+  type HandbookEntry,
+  type HandbookInput,
   type CheckIn,
   type Employee,
   type HrAsk,
   type HrCheckIn,
+  type HrImpact,
   type HrStats,
   type Mood,
   type Notice,
+  type Ping,
   type RequestStatus,
   type SupportRequest,
   type Theme,
 } from "../shared/types";
-import { EMPLOYEES, seedAsks, seedCheckIns, seedRequests } from "./seed";
+import { COLLEAGUES, EMPLOYEES, seedAsks, seedCheckIns, seedRequests } from "./seed";
 import { HANDBOOK } from "./handbook";
 
 // Internal versions keep who contributed, so we can notify them later.
@@ -40,6 +44,8 @@ type Data = {
   requests: SupportRequest[];
   actions: InternalAction[];
   notices: Notice[];
+  pings: Ping[];
+  handbook: HandbookEntry[]; // entries HR added to fill gaps
   analysis: InternalAnalysis | null;
 };
 
@@ -63,6 +69,8 @@ function fresh(): Data {
     requests: seedRequests(),
     actions: [],
     notices: [],
+    pings: [],
+    handbook: [],
     analysis: null,
   };
 }
@@ -78,6 +86,8 @@ export function loadStore() {
   try {
     const parsed = JSON.parse(fs.readFileSync(file(), "utf8"));
     data = parsed.version === 2 ? parsed : fresh();
+    data.pings ??= []; // saved before pings existed
+    data.handbook ??= [];
   } catch {
     data = fresh();
   }
@@ -111,9 +121,11 @@ export const store = {
     save();
   },
 
-  addRequest(r: Omit<SupportRequest, "id" | "createdAt" | "updatedAt" | "status">) {
-    data.requests.unshift({ ...r, id: randomUUID(), status: "open", createdAt: now(), updatedAt: now() });
+  addRequest(r: Omit<SupportRequest, "id" | "createdAt" | "updatedAt" | "status">): SupportRequest {
+    const req: SupportRequest = { ...r, id: randomUUID(), status: "open", createdAt: now(), updatedAt: now() };
+    data.requests.unshift(req);
     save();
+    return req;
   },
 
   myRequests: (employeeId: string) => data.requests.filter((r) => r.employeeId === employeeId),
@@ -126,6 +138,54 @@ export const store = {
     save();
   },
 
+  handbook: (): HandbookEntry[] => [...HANDBOOK, ...data.handbook],
+  handbookAdded: () => data.handbook,
+
+  // Publishing closes the loop: the questions count as answered, and whoever asked hears about it.
+  // Returns how many people were told.
+  publishHandbookEntry(input: HandbookInput): number {
+    const entry: HandbookEntry = {
+      id: `hr-${randomUUID()}`,
+      title: input.title,
+      kind: "how-to",
+      keywords: input.keywords,
+      answer: input.answer,
+    };
+    data.handbook.push(entry);
+    const askers = new Map<string, string>();
+    for (const a of data.asks) {
+      if (a.answered || !input.askIds.includes(a.id)) continue;
+      a.answered = true;
+      a.entryId = entry.id;
+      askers.set(a.employeeId, a.question);
+    }
+    for (const [employeeId, question] of askers) {
+      store.notify(employeeId, "Your question has an answer", `You asked: "${question}"\nThe handbook now covers it: ${entry.title}. Ask WorkPalz to read it.`);
+    }
+    save();
+    return askers.size;
+  },
+
+  colleagues: () => COLLEAGUES,
+  colleague: (id: string) => COLLEAGUES.find((c) => c.id === id),
+
+  addPing(p: Omit<Ping, "id" | "createdAt" | "reply">): Ping {
+    const ping = { ...p, id: randomUUID(), reply: null, createdAt: now() };
+    data.pings.unshift(ping);
+    save();
+    return ping;
+  },
+
+  replyToPing(id: string, from: string, reply: string) {
+    const p = data.pings.find((x) => x.id === id);
+    if (!p) return; // deleted or demo reset in the meantime
+    p.reply = reply;
+    store.notify(p.fromId, `${from.split(" ")[0]} replied`, reply, from);
+    save();
+  },
+
+  myPings: (employeeId: string) => data.pings.filter((p) => p.fromId === employeeId),
+
   myData(employeeId: string) {
     return {
       employee: data.employees.find((e) => e.id === employeeId),
@@ -133,6 +193,7 @@ export const store = {
       questions: data.asks.filter((a) => a.employeeId === employeeId),
       requests: data.requests.filter((r) => r.employeeId === employeeId),
       notices: data.notices.filter((n) => n.employeeId === employeeId),
+      pings: data.pings.filter((p) => p.fromId === employeeId),
     };
   },
 
@@ -141,6 +202,7 @@ export const store = {
     data.checkIns = data.checkIns.filter((c) => c.employeeId !== employeeId);
     data.asks = data.asks.filter((a) => a.employeeId !== employeeId);
     data.notices = data.notices.filter((n) => n.employeeId !== employeeId);
+    data.pings = data.pings.filter((p) => p.fromId !== employeeId);
     data.requests = data.requests
       .filter((r) => r.employeeId !== employeeId || r.status !== "resolved")
       .map((r) => (r.employeeId === employeeId ? { ...r, employeeId: "deleted", name: "Former requester" } : r));
@@ -166,7 +228,7 @@ export const store = {
       week: a.week,
       question: a.question,
       answered: a.answered,
-      topic: a.entryId ? (HANDBOOK.find((h) => h.id === a.entryId)?.title ?? null) : null,
+      topic: a.entryId ? (store.handbook().find((h) => h.id === a.entryId)?.title ?? null) : null,
       createdAt: a.createdAt,
     }));
   },
@@ -189,6 +251,29 @@ export const store = {
       openRequests: data.requests.filter((r) => inTeam(r) && r.status !== "resolved").length,
       unanswered: asks.filter((a) => !a.answered).length,
       questions: asks.length,
+    };
+  },
+
+  hrImpact(team: string): HrImpact {
+    const inTeam = <T extends { team: string }>(x: T) => team === "All" || x.team === team;
+    const days = (from: string, to: string) => (new Date(to).getTime() - new Date(from).getTime()) / 86400000;
+    const resolved = data.requests.filter((r) => inTeam(r) && r.status === "resolved");
+    const open = data.requests.filter((r) => inTeam(r) && r.status !== "resolved");
+    const actions = data.actions.filter(inTeam);
+    const done = actions.filter((a) => a.status === "done");
+    const people = data.employees.filter(inTeam).length || 1;
+    const rate = (pick: (iso: string) => boolean) =>
+      Math.round((new Set(data.checkIns.filter((x) => inTeam(x) && pick(x.createdAt)).map((x) => x.employeeId)).size / people) * 100);
+    return {
+      requestsResolved: resolved.length,
+      avgDaysToResolve: resolved.length ? Math.round((resolved.reduce((s, r) => s + days(r.createdAt, r.updatedAt), 0) / resolved.length) * 10) / 10 : null,
+      oldestOpenDays: open.length ? Math.floor(Math.max(...open.map((r) => days(r.createdAt, now())))) : null,
+      followUpsDone: done.length,
+      followUpsOpen: actions.length - done.length,
+      peopleTold: new Set(done.flatMap((a) => a.contributorIds)).size,
+      handbookAdded: data.handbook.length,
+      questionsNowAnswered: data.asks.filter((a) => inTeam(a) && a.entryId?.startsWith("hr-")).length,
+      checkInRate: { thisWeek: rate(inLastWeek), lastWeek: rate(inWeekBefore) },
     };
   },
 
@@ -237,19 +322,21 @@ export const store = {
   },
 
   // Closing the loop: everyone who raised it hears that something was done
-  setActionStatus(id: string, status: Action["status"]) {
+  setActionStatus(id: string, status: Action["status"]): number {
     const a = data.actions.find((x) => x.id === id);
-    if (!a || a.status === status) return;
+    if (!a || a.status === status) return 0;
     a.status = status;
+    a.doneAt = status === "done" ? now() : undefined;
     if (status === "done") {
       for (const employeeId of a.contributorIds) {
         store.notify(employeeId, "Update on something you raised", `You and others raised: ${a.themeTitle.toLowerCase()}.\nWhat was done: ${a.action}`);
       }
     }
     save();
+    return status === "done" ? a.contributorIds.length : 0;
   },
 
-  notify(employeeId: string, title: string, body: string) {
-    data.notices.push({ id: randomUUID(), employeeId, title, body, createdAt: now(), read: false });
+  notify(employeeId: string, title: string, body: string, from?: string) {
+    data.notices.push({ id: randomUUID(), employeeId, title, body, createdAt: now(), read: false, from });
   },
 };
