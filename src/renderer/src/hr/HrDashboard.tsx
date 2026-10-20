@@ -238,7 +238,7 @@ export default function HrDashboard() {
         </div>
       </header>
 
-      <main id="main" ref={mainRef} tabIndex={-1} className="mx-auto max-w-[1240px] px-6 pb-14 pt-7 outline-none">
+      <main id="main" ref={mainRef} tabIndex={-1} className="mx-auto max-w-[1240px] px-6 pb-28 pt-7 outline-none">
         {managerTeam && (
           <p className="m-0 mb-6 rounded-xl bg-[color:var(--hr-blue-soft)] px-4 py-3 text-[14px]" style={{ color: C.blueText }}>
             <strong>Manager view for {managerTeam}.</strong> You see patterns for your team, never individuals: check-in notes, quotes and

@@ -170,7 +170,7 @@ export default function Overview(p: {
                     variant={action ? "muted" : "primary"}
                     disabled={!!action}
                     onClick={() => p.onCreateAction(t)}
-                    aria-label={action ? `Follow-up created for ${t.title}` : `Create follow-up for ${t.title}, ${t.team}`}
+                    aria-label={`${action ? (action.status === "done" ? "Follow-up done" : "Follow-up created") : "Create follow-up"} for ${t.title}, ${t.team}`}
                   >
                     {action ? (action.status === "done" ? "Follow-up done ✓" : "Follow-up created") : "Create follow-up"}
                   </Button>

@@ -399,7 +399,7 @@ function PersonRow({ c }: { c: Colleague }) {
   const a = AVAILABILITY[c.availability];
   return (
     <div className="flex items-start gap-3 rounded-2xl [background-color:var(--bg)] border [border-color:var(--line)] px-3 py-2.5">
-      <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold [background-color:var(--surface)] [color:var(--blue)] border [border-color:var(--line)]">
+      <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold [background-color:var(--surface)] [color:var(--ink)] border [border-color:var(--line)]">
         {initials(c.name)}
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">

@@ -8,10 +8,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const AXE = fs.readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."); // handles spaces in the folder name
 const shots = path.join(root, "tests/e2e/shots");
 fs.rmSync(shots, { recursive: true, force: true });
 fs.mkdirSync(shots, { recursive: true });
@@ -24,9 +25,11 @@ const check = (name, ok, detail = "") => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
 };
 
+// Terminals inside VS Code set ELECTRON_RUN_AS_NODE, which would start Electron as plain Node
+const { ELECTRON_RUN_AS_NODE: _runAsNode, ...env } = process.env;
 const app = await electron.launch({
   args: [path.join(root, "out/main/index.js"), "--no-sandbox"],
-  env: { ...process.env, WORKPALZ_E2E: "1", WORKPALZ_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "wp-e2e-")), GEMINI_API_KEY: "" },
+  env: { ...env, WORKPALZ_E2E: "1", WORKPALZ_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "wp-e2e-")), GEMINI_API_KEY: "" },
 });
 
 const island = await app.firstWindow();
@@ -66,7 +69,7 @@ check("Pill shows onboarding week", (await island.locator(".island-shell").inner
 await openMenu();
 await shot(island, "menu");
 await axe(island, "island menu");
-check("Menu has 4 features", (await island.locator("section[aria-labelledby=menu-title] li").count()) === 4);
+check("Menu has 5 features", (await island.locator("section[aria-labelledby=menu-title] li").count()) === 5);
 
 // Ask WorkPalz: jargon
 await island.getByRole("button", { name: /Ask WorkPalz/ }).click();
@@ -155,13 +158,51 @@ await settle();
 await island.getByRole("button", { name: /Stop focus/ }).click();
 await settle();
 
+// Ping a colleague: search by topic, send, get a (demo) reply
+await openMenu();
+await island.getByRole("button", { name: /Ping a colleague/ }).click();
+await settle();
+await shot(island, "ping-search");
+await axe(island, "island ping (search)");
+await island.locator("#ping-search").fill("vpn");
+await settle(200);
+check("Ping search by topic finds IT", (await island.locator("ul[aria-label=Colleagues] li").count()) === 1);
+await island.getByRole("button", { name: /Ravi Kumar/ }).click();
+await settle();
+await island.getByRole("button", { name: "Got 5 minutes to help me?" }).click();
+await shot(island, "ping-compose");
+await axe(island, "island ping (compose)");
+await island.getByRole("button", { name: "Ping Ravi" }).click();
+await settle(400);
+check("Ping sent flash", (await island.locator(".island-shell").innerText()).includes("Pinged Ravi"));
+await island.getByText("Ravi replied").first().waitFor({ timeout: 10000 });
+await settle(500);
+await shot(island, "ping-reply");
+check("Colleague's reply pops up on the island", true);
+await island.getByRole("button", { name: /Got it|Next/ }).click();
+await settle();
+
+// Hide: a small bar stays at the top and brings it back
+await openMenu();
+await island.getByRole("button", { name: "Hide", exact: true }).click();
+await settle(400);
+check("Hide shows how to bring it back", /to show|Show it from/.test(await island.locator(".island-shell").innerText()));
+await island.getByRole("button", { name: "Show WorkPalz" }).waitFor({ timeout: 4000 });
+await settle(500);
+await shot(island, "hidden-bar", null);
+check("Hidden island leaves a bar to click", true);
+await island.getByRole("button", { name: "Show WorkPalz" }).click();
+await settle();
+check("Clicking the bar brings the island back", (await island.getByRole("button", { name: "Show WorkPalz" }).count()) === 0);
+
 // Privacy
 await openMenu();
 await island.getByRole("button", { name: "Your privacy" }).click();
 await settle();
 await shot(island, "privacy");
 await axe(island, "island privacy");
-check("Privacy shows stored counts", (await island.getByText(/Stored now:/).innerText()).includes("1 check-in,"));
+const stored = await island.getByText(/Stored now:/).innerText();
+check("Privacy shows stored counts, pings included", stored.includes("1 check-in,") && stored.includes("1 ping"));
 await island.keyboard.press("Escape");
 await settle();
 check("Esc collapses the island", (await island.locator(".island-shell").innerText()).includes("WorkPalz"));
@@ -241,6 +282,25 @@ await axe(hr, "HR questions");
 const q = await hr.locator("main").innerText();
 check("Similar unanswered questions are grouped (staging access asked 3×)", /staging server[\s\S]{0,80}Asked 3×/.test(q));
 
+// Fill the gap: AI draft (offline here), HR fills in the placeholder, publishes, the askers hear about it
+const stagingGap = hr.locator("li", { hasText: "Asked 3×" });
+await stagingGap.getByRole("button", { name: /Draft answer with AI/ }).click();
+await hr.getByRole("button", { name: "Draft it" }).click();
+await hr.getByLabel("Answer new hires will see").waitFor();
+check("Publish is locked while [HR: …] placeholders remain", await hr.getByRole("button", { name: "Publish to handbook" }).isDisabled());
+await shot(hr, "hr-handbook-draft", null);
+await axe(hr, "HR handbook draft");
+await hr.getByLabel("Answer new hires will see").fill("Ask your team lead to approve staging access in the IT portal under Access. It's usually ready the same day.");
+await hr.getByRole("button", { name: "Publish to handbook" }).click();
+await island.getByText("Your question has an answer").first().waitFor({ timeout: 4000 });
+await settle(500);
+await shot(island, "island-question-answered");
+check("The new hire who asked is told the handbook now answers it", true);
+await island.getByRole("button", { name: /Got it|Next/ }).click();
+await settle();
+await hr.waitForTimeout(300);
+check("Published entry is listed under Added by HR", (await hr.locator("main").innerText()).includes("Added by HR"));
+
 await hr.getByRole("button", { name: /^Check-ins/ }).click();
 await hr.waitForTimeout(300);
 await shot(hr, "hr-checkins", null);
@@ -254,6 +314,40 @@ await hr.getByLabel("Team").selectOption("Marketing");
 await hr.waitForTimeout(400);
 const mk = await hr.locator("main").innerText();
 check("Team filter shows only Marketing themes", !mk.includes("4 of 5 Engineering") && mk.includes("Marketing"));
+check("Impact section is shown", mk.includes("Impact") && mk.includes("Handbook gaps closed"));
+await hr.getByLabel("Team").selectOption("All");
+
+// Ask AI: the assistant on every page (offline answers here)
+await hr.getByRole("button", { name: "Ask AI" }).click();
+await hr.getByRole("dialog", { name: "WorkPalz AI assistant" }).waitFor();
+await hr.getByRole("button", { name: "Which team needs help most this week?" }).click();
+await hr.getByText(/Offline mode/).first().waitFor({ timeout: 5000 });
+await shot(hr, "hr-ask-ai", null);
+await axe(hr, "HR Ask AI");
+const chat = await hr.getByRole("dialog").innerText();
+check("Ask AI answers from the dashboard data", /new hires checked in/.test(chat));
+check("Ask AI never shows names", !/Mei Ling|Aisyah|Jun Hao|Priya/.test(chat));
+await hr.keyboard.press("Escape");
+
+// Manager view: own team, patterns only
+await hr.getByLabel("View as").selectOption({ label: "Engineering manager" });
+await hr.waitForTimeout(400);
+const mgr = await hr.locator("body").innerText();
+await shot(hr, "hr-manager-view", null);
+await axe(hr, "HR manager view");
+check("Manager can't open Requests or Check-ins", (await hr.getByRole("button", { name: /^Requests/ }).count()) === 0 && (await hr.getByRole("button", { name: /^Check-ins/ }).count()) === 0);
+check("Manager sees no quotes", !mgr.includes("What they said") && mgr.includes("Quotes stay with HR"));
+check("Manager sees only their team", !mgr.includes("Marketing new hires"));
+await hr.getByLabel("View as").selectOption("hr");
+await hr.waitForTimeout(300);
+
+// Dark mode
+await hr.getByRole("button", { name: "Switch to dark mode" }).click();
+await hr.waitForTimeout(300);
+check("Dark mode toggle", (await hr.evaluate(() => document.documentElement.dataset.theme)) === "dark");
+await shot(hr, "hr-dark", null);
+await axe(hr, "HR overview (dark)");
+await hr.getByRole("button", { name: "Switch to light mode" }).click();
 
 // ---------- Summary ----------
 
