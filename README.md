@@ -69,6 +69,8 @@ Without a key, WorkPalz uses its offline analyser, handbook search and simple of
 | `npm run dist:win` | Build a Windows installer (run on Windows) |
 | `npm run dist:mac` | Build a macOS .dmg |
 
+See [TESTING.md](TESTING.md) for the full testing flow: what each test checks and when to run it.
+
 ## Shortcuts
 
 Mac: use `Cmd+Option` instead of `Ctrl+Alt`. The island shortcuts can be changed in **Settings**.
