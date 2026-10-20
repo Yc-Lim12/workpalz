@@ -12,6 +12,8 @@ const listen = (channel: string) => (cb: (...args: any[]) => void) => {
 const call = (channel: string) => (...args: unknown[]) => ipcRenderer.invoke(channel, ...args);
 
 const api: WorkPalzApi = {
+  setShortcuts: (shortcuts) => ipcRenderer.send("island:set-shortcuts", shortcuts),
+
   setInteractive: (on) => ipcRenderer.send("island:set-interactive", on),
   focusIsland: () => ipcRenderer.send("island:focus"),
   releaseFocus: () => ipcRenderer.send("island:release-focus"),

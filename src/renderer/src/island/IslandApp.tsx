@@ -1,9 +1,8 @@
-// Island state: which view is open, what the pill shows, focus handling and announcements.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MotionConfig } from "framer-motion";
 import Island, { type PillInfo } from "./Island";
 import { AMBER, BLUE, type IslandView } from "./theme";
-import { AskView, CheckInView, MenuView, NoticeView, PrivacyView, RequestView } from "./views";
+import { AskView, CheckInView, MenuView, NoticeView, PrivacyView, RequestView, SettingsView, loadShortcuts } from "./views";
 import type { Employee, IslandLayout, Notice, SupportRequest } from "../../../shared/types";
 
 const api = window.workpalz;
@@ -34,11 +33,13 @@ export default function IslandApp() {
   const prevUnread = useRef(0);
   const viewRef = useRef(view);
   viewRef.current = view;
+  
+  const toggleFocusRef = useRef<() => void>(() => {});
+  const lastOpened = useRef(0); 
+  const isNavigating = useRef(false); // NEW: The shield!
 
   const unread = notices.filter((n) => !n.read);
   const openRequests = requests.filter((r) => r.status !== "resolved").length;
-
-  // ----- helpers -----
 
   const clearClose = () => {
     if (closeTimer.current) window.clearTimeout(closeTimer.current);
@@ -47,7 +48,7 @@ export default function IslandApp() {
 
   const say = (text: string) => {
     setAnnounce("");
-    window.setTimeout(() => setAnnounce(text), 50); // re-announce even if the text repeats
+    window.setTimeout(() => setAnnounce(text), 50); 
   };
 
   const showFlash = (text: string) => {
@@ -56,20 +57,26 @@ export default function IslandApp() {
     window.setTimeout(() => setFlash(null), 3000);
   };
 
-  // userAction = the person opened it, so take keyboard focus. Auto-opened notices don't steal focus.
   const open = useCallback((v: IslandView, userAction = true) => {
     clearClose();
     if (userAction && v !== "pill") api.focusIsland();
+    lastOpened.current = Date.now(); 
+    
+    // BUGFIX: Throw up the Navigation Shield for 400ms during the transition.
+    // This forces the island to stay clickable even if Framer Motion shrinks it!
+    isNavigating.current = true;
+    setTimeout(() => { isNavigating.current = false; }, 400);
+    api.setInteractive(true);
+    hovering.current = true;
+
     setView(v);
   }, []);
 
   const collapse = useCallback(() => {
     clearClose();
     setView("pill");
-    if (document.hasFocus()) api.releaseFocus(); // give the keyboard back to the user's app
+    if (document.hasFocus()) api.releaseFocus();
   }, []);
-
-  // ----- data -----
 
   const refresh = useCallback(async () => {
     const [r, n] = await Promise.all([api.listMyRequests(), api.listMyNotices()]);
@@ -78,6 +85,11 @@ export default function IslandApp() {
   }, []);
 
   useEffect(() => {
+    api.setShortcuts(loadShortcuts());
+
+    const savedTheme = localStorage.getItem('app-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+
     api.getMe().then(setMe);
     api.getQuestion().then(setQuestion);
     api.getLayout().then(setLayout);
@@ -88,7 +100,6 @@ export default function IslandApp() {
     });
   }, [refresh]);
 
-  // New update from HR → the island expands by itself (but doesn't steal focus)
   useEffect(() => {
     if (unread.length > prevUnread.current && viewRef.current === "pill") {
       open("notice", false);
@@ -97,7 +108,6 @@ export default function IslandApp() {
     prevUnread.current = unread.length;
   }, [unread, open]);
 
-  // Events from main
   useEffect(
     () =>
       api.onIslandEvent((ev) => {
@@ -106,11 +116,27 @@ export default function IslandApp() {
           setPending(true);
           say("Weekly check-in is ready");
         }
-        if (ev.type === "open") open(viewRef.current === "pill" ? "menu" : viewRef.current);
-        // Clicked into another app → close (update notices stay until read)
+        
+        if (ev.type === "open") {
+          viewRef.current !== "pill" ? collapse() : open("menu");
+        }
+        if (ev.type === "open-ask") {
+          viewRef.current === "ask" ? collapse() : open("ask");
+        }
+        if (ev.type === "open-request") {
+          viewRef.current === "request" ? collapse() : open("request");
+        }
+        if (ev.type === "toggle-focus") {
+          toggleFocusRef.current();
+        }
+
         if (ev.type === "blur" && viewRef.current !== "pill" && viewRef.current !== "notice") {
-          clearClose();
-          setView("pill");
+          setTimeout(() => {
+            if (Date.now() - lastOpened.current > 200) {
+              clearClose();
+              setView("pill");
+            }
+          }, 50);
         }
         if (ev.type === "collapse") {
           setPending(false);
@@ -121,7 +147,18 @@ export default function IslandApp() {
     [open, collapse]
   );
 
-  // ----- focus timer -----
+  const toggleFocus = () => {
+    if (focusEnd) {
+      setFocusEnd(null);
+      say("Focus timer stopped");
+    } else {
+      setNow(Date.now());
+      setFocusEnd(Date.now() + FOCUS_MS);
+      say("Focus timer started, 25 minutes");
+    }
+    collapse();
+  };
+  toggleFocusRef.current = toggleFocus;
 
   useEffect(() => {
     if (!focusEnd) return;
@@ -136,20 +173,6 @@ export default function IslandApp() {
     return () => window.clearInterval(id);
   }, [focusEnd]);
 
-  const toggleFocus = () => {
-    if (focusEnd) {
-      setFocusEnd(null);
-      say("Focus timer stopped");
-    } else {
-      setNow(Date.now());
-      setFocusEnd(Date.now() + FOCUS_MS);
-      say("Focus timer started, 25 minutes");
-    }
-    collapse();
-  };
-
-  // ----- keyboard focus when a view opens (WCAG 2.4.3) -----
-
   useEffect(() => {
     if (view === "pill") return;
     const id = window.setTimeout(() => {
@@ -162,8 +185,6 @@ export default function IslandApp() {
     }, 280);
     return () => window.clearTimeout(id);
   }, [view, layout]);
-
-  // ----- menu auto-close (never while hovered or while keyboard focus is inside) -----
 
   const scheduleClose = useCallback(() => {
     clearClose();
@@ -187,12 +208,13 @@ export default function IslandApp() {
   }, [collapse]);
 
   const handleHover = (on: boolean) => {
-    hovering.current = on;
-    api.setInteractive(on); // the transparent area stays click-through
-    if (!on && view === "menu") scheduleClose();
-  };
+    // BUGFIX: If the animation is running, completely ignore fake mouse-leaves!
+    if (isNavigating.current && !on) return; 
 
-  // ----- pill content, in priority order -----
+    hovering.current = on;
+    api.setInteractive(on);
+    if (!on && viewRef.current === "menu") scheduleClose();
+  };
 
   const pill: PillInfo = flash
     ? { label: flash, color: BLUE, ariaLabel: `${flash}. Open WorkPalz` }
@@ -282,6 +304,9 @@ export default function IslandApp() {
           {view === "privacy" && (
             <PrivacyView getData={api.getMyData} onExport={api.exportMyData} onDelete={api.deleteMyData} onBack={() => open("menu")} />
           )}
+          {view === "settings" && (
+            <SettingsView onBack={() => open("menu")} />
+          )}
         </Island>
 
         <div role="status" aria-live="polite" className="sr-only">
@@ -292,7 +317,6 @@ export default function IslandApp() {
   );
 }
 
-// If the last notice was read elsewhere, quietly close
 function EmptyCollapse({ onCollapse }: { onCollapse: () => void }) {
   useEffect(() => {
     onCollapse();

@@ -168,11 +168,18 @@ export type IslandLayout = {
 };
 
 export type IslandEvent =
-  | { type: "checkin-prompt" }
-  | { type: "collapse" }
-  | { type: "open" }
   | { type: "layout"; layout: IslandLayout }
-  | { type: "blur" }; // the person clicked into another app
+  | { type: "checkin-prompt" }
+  | { type: "open" }
+  | { type: "open-ask" }
+  | { type: "open-request" }
+  | { type: "toggle-focus" }
+  | { type: "blur" }
+  | { type: "collapse" };
+
+// Global shortcuts the person can set in Settings ("" = not set)
+export type Shortcuts = { main: string; ask: string; request: string; focus: string };
+export const DEFAULT_SHORTCUTS: Shortcuts = { main: "CommandOrControl+Alt+Space", ask: "", request: "", focus: "" };
 
 export type MyDataSummary = { checkIns: number; questions: number; requests: number };
 
@@ -180,6 +187,7 @@ export type MyDataSummary = { checkIns: number; questions: number; requests: num
 
 export type WorkPalzApi = {
   // island window
+  setShortcuts: (shortcuts: Shortcuts) => void;
   setInteractive: (on: boolean) => void;
   focusIsland: () => void;
   releaseFocus: () => void;

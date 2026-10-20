@@ -1,9 +1,9 @@
-export type IslandView = "pill" | "menu" | "checkin" | "ask" | "request" | "notice" | "privacy";
+export type IslandView = "pill" | "menu" | "checkin" | "ask" | "request" | "notice" | "privacy" | "settings";
 
-export const BLUE = "#4C8DFF";
-export const AMBER = "#FFA94D";
-export const MUTED = "#A1A6B0"; // 8.3:1 on black
-export const PLACEHOLDER = "#8E949E"; // 5.6:1 on #1C1D21
+export const BLUE = "var(--blue)";
+export const AMBER = "var(--amber)";
+export const MUTED = "var(--muted)"; 
+export const PLACEHOLDER = "var(--muted)";
 
 // Width per view. Height follows the content, so it never clips when text is zoomed.
 export const WIDTH: Record<IslandView, number> = {
@@ -14,6 +14,7 @@ export const WIDTH: Record<IslandView, number> = {
   request: 440,
   notice: 380,
   privacy: 420,
+  settings: 350,
 };
 export const NOTCH_PILL_WIDTH = 420; // pill wraps around the MacBook notch
 export const NOTCH_GAP = 210; // hidden middle part behind the notch
@@ -26,6 +27,7 @@ export const RADIUS: Record<IslandView, number> = {
   request: 30,
   notice: 28,
   privacy: 30,
+  settings: 30,
 };
 
 // iPhone-like springy morph
