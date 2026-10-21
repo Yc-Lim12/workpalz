@@ -15,7 +15,7 @@ const find = (themes: { title: string; team: string }[], title: RegExp, team: st
   themes.find((t) => title.test(t.title) && t.team === team) as any;
 
 beforeEach(() => {
-  delete process.env.GEMINI_API_KEY;
+  process.env.WORKPALZ_OFFLINE = "1"; // tests never call OpenAI, even with a key in .env
   loadStore();
   resetStore();
 });

@@ -2,7 +2,7 @@
 // The AI may only answer from handbook entries, so it can't make up policies.
 import type { AskResult, HandbookEntry } from "../shared/types";
 import { store } from "./store";
-import { geminiJson } from "./gemini";
+import { aiJson } from "./openai";
 
 const STOP = new Set(
   "a an the is are am do does did i me my we our to of for in on at and or what whats what's how who where when which can could should would please tell about mean means meaning get".split(
@@ -52,7 +52,7 @@ export async function answerQuestion(question: string): Promise<{ result: AskRes
   const hits = searchHandbook(question);
 
   try {
-    const ai = await geminiJson<{ answered: boolean; entryId?: string; answer?: string }>(
+    const ai = await aiJson<{ answered: boolean; entryId?: string; answer?: string }>(
       `You are "Ask WorkPalz", a helper for new employees at Lumora Tech.
 Answer ONLY using the handbook entries below. If they don't answer the question, reply {"answered": false}.
 Keep answers to 1–3 short, friendly sentences in plain English. Explain jargon simply.
@@ -68,11 +68,11 @@ Return JSON: {"answered": boolean, "entryId": string, "answer": string}`
     );
     if (ai) {
       const entry = store.handbook().find((e) => e.id === ai.entryId);
-      if (ai.answered && entry && ai.answer) return { result: asResult(entry, ai.answer, "gemini"), entryId: entry.id };
-      return { result: { answered: false, answer: NOT_FOUND, entry: null, source: "gemini" }, entryId: null };
+      if (ai.answered && entry && ai.answer) return { result: asResult(entry, ai.answer, "openai"), entryId: entry.id };
+      return { result: { answered: false, answer: NOT_FOUND, entry: null, source: "openai" }, entryId: null };
     }
   } catch (err) {
-    console.error("[ask] Gemini failed, using handbook search:", err);
+    console.error("[ask] OpenAI failed, using handbook search:", err);
   }
 
   const best = hits[0];

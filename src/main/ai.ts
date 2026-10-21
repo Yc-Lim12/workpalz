@@ -2,11 +2,11 @@
 //   1. negative weekly check-ins
 //   2. questions the handbook couldn't answer (onboarding gaps)
 //   3. open IT/HR requests
-// Gemini when a key is set; offline rule-based analyser otherwise or if the call fails.
+// OpenAI when a key is set; offline rule-based analyser otherwise or if the call fails.
 import { randomUUID } from "node:crypto";
 import { NEGATIVE_MOODS, REQUEST_CATEGORIES, type Employee, type EvidenceSource, type Theme } from "../shared/types";
 import { inLastWeek, inWeekBefore, store, type InternalAnalysis, type InternalTheme } from "./store";
-import { geminiJson } from "./gemini";
+import { aiJson } from "./openai";
 
 type Signal = { employeeId: string; team: string; source: EvidenceSource; text: string };
 
@@ -68,17 +68,17 @@ export async function analyse(): Promise<InternalAnalysis> {
   const employees = store.employees();
 
   try {
-    const themes = await analyseWithGemini(thisWeek, lastWeek, employees);
-    if (themes) return { generatedAt: new Date().toISOString(), source: "gemini", themes };
+    const themes = await analyseWithAi(thisWeek, lastWeek, employees);
+    if (themes) return { generatedAt: new Date().toISOString(), source: "openai", themes };
   } catch (err) {
-    console.error("[ai] Gemini failed, using offline analyser:", err);
+    console.error("[ai] OpenAI failed, using offline analyser:", err);
   }
   return { generatedAt: new Date().toISOString(), source: "offline", themes: analyseOffline(thisWeek, lastWeek, employees) };
 }
 
-// ---------- Gemini ----------
+// ---------- OpenAI ----------
 
-async function analyseWithGemini(thisWeek: Signal[], lastWeek: Signal[], employees: Employee[]): Promise<InternalTheme[] | null> {
+async function analyseWithAi(thisWeek: Signal[], lastWeek: Signal[], employees: Employee[]): Promise<InternalTheme[] | null> {
   const sizes = teamSizes(employees);
 
   // Names and IDs never leave the device. P1, P2… only let the AI count unique people.
@@ -97,7 +97,7 @@ async function analyseWithGemini(thisWeek: Signal[], lastWeek: Signal[], employe
     ...lastWeek.map((s) => ({ period: "last week", person: pid(s.employeeId), team: s.team, source: s.source, text: s.text })),
   ];
 
-  const result = await geminiJson<{
+  const result = await aiJson<{
     themes: {
       title: string;
       team: string;

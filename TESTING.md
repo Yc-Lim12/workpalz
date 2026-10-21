@@ -23,7 +23,7 @@ TypeScript reads all the code without running it and catches mistakes such as a 
 npm test
 ```
 
-16 tests in [tests/logic.test.ts](tests/logic.test.ts) check the app's logic without opening any window.
+16 tests in [tests/logic.test.ts](tests/logic.test.ts) check the app's logic without opening any window. They always use the offline AI.
 
 | Area | What's checked |
 |---|---|
@@ -45,7 +45,7 @@ npm run build
 npm run test:e2e
 ```
 
-[tests/e2e/demo.mjs](tests/e2e/demo.mjs) opens the real app and clicks through it the way a person would. Without a Gemini key it tests the offline AI. It also runs an axe-core **WCAG 2.2 AA accessibility scan** on every screen, in light and dark mode.
+[tests/e2e/demo.mjs](tests/e2e/demo.mjs) opens the real app and clicks through it the way a person would. It always uses the offline AI, even with a key in `.env`, so it costs nothing and gives the same result every time. It also runs an axe-core **WCAG 2.2 AA accessibility scan** on every screen, in light and dark mode.
 
 ### The flow
 
@@ -95,7 +95,7 @@ Do this on the laptop you'll present with, ideally on both Mac and Windows:
 1. Follow the **3-minute demo script** in the [README](README.md#3-minute-demo-script).
 2. Check that the island sits in the right place and that the menu bar / tray icon appears.
 3. Try the shortcuts: `Ctrl+Alt+Space`, `Ctrl+Alt+B`, `Ctrl+Alt+H` (`Cmd+Option` on Mac).
-4. With a Gemini key in `.env`, check that the dashboard shows "Gemini" instead of "Offline analyser", and try Ask AI with your own questions.
+4. With an OpenAI key in `.env`, check that the dashboard shows "OpenAI" instead of "Offline analyser", and try Ask WorkPalz and Ask AI with your own questions.
 5. Switch the island and the dashboard between light and dark mode.
 
 ## When to run what
@@ -109,5 +109,5 @@ Do this on the laptop you'll present with, ideally on both Mac and Windows:
 ## Not covered by automated tests
 
 - **Windows**: the tests have only been run on Mac so far.
-- **Real Gemini answers**: these need your API key, so automated runs use the offline AI.
+- **Real OpenAI answers**: automated runs always use the offline AI. Check the real AI by hand (step 4 above).
 - **Look and feel**: layout, animations and wording. Check these yourself, using the screenshots.

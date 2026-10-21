@@ -29,7 +29,7 @@ const check = (name, ok, detail = "") => {
 const { ELECTRON_RUN_AS_NODE: _runAsNode, ...env } = process.env;
 const app = await electron.launch({
   args: [path.join(root, "out/main/index.js"), "--no-sandbox"],
-  env: { ...env, WORKPALZ_E2E: "1", WORKPALZ_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "wp-e2e-")), GEMINI_API_KEY: "" },
+  env: { ...env, WORKPALZ_E2E: "1", WORKPALZ_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "wp-e2e-")), WORKPALZ_OFFLINE: "1" }, // offline AI, even with a key in .env
 });
 
 const island = await app.firstWindow();
@@ -218,6 +218,25 @@ const next = await island.evaluate(() => document.activeElement?.textContent ?? 
 check("Tab moves to the next option", next.includes("Quick request"));
 await island.keyboard.press("Escape");
 await settle();
+
+// Click-through: the see-through island window must never block clicks to the apps below it
+const interactive = () => hook("isIslandInteractive");
+await island.mouse.move(5, 600); // empty area, well away from the island
+await hook("sendIsland", { type: "open" }); // opened by keyboard, the pointer is elsewhere
+await settle(800);
+check("Opened by keyboard: the empty area still lets clicks through", (await interactive()) === false);
+const box = await island.locator(".island-shell").boundingBox();
+await island.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+await settle(200);
+check("Pointer on the island: it catches clicks", (await interactive()) === true);
+await island.mouse.move(5, 600);
+await settle(200);
+check("Pointer off the island: clicks go through again", (await interactive()) === false);
+await island.mouse.move(box.x + box.width / 2, box.y + 20);
+await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.getTitle() === "WorkPalz").emit("blur"));
+await island.mouse.move(5, 600);
+await settle(800);
+check("Closed by clicking another app: clicks go through", (await interactive()) === false);
 
 // ---------- HR dashboard ----------
 

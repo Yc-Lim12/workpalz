@@ -313,7 +313,7 @@ function GapEditor({
   return (
     <div className="flex flex-col gap-3 rounded-xl bg-[color:var(--hr-subtle)] p-4">
       <p className="m-0 text-[12.5px]" style={{ color: C.muted }}>
-        Draft by {draft.source === "gemini" ? "Gemini" : "the offline helper (add a Gemini key for a full draft)"}. Check every word before publishing.
+        Draft by {draft.source === "openai" ? "OpenAI" : "the offline helper (add an OpenAI key for a full draft)"}. Check every word before publishing.
       </p>
       <div className="flex flex-col gap-1.5">
         <label htmlFor={`${id}-title`} className="text-[13px] font-semibold">

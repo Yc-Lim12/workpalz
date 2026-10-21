@@ -54,11 +54,11 @@ New employees often struggle quietly in their first months: missing tools, uncle
 
 ```bash
 npm install
-cp .env.example .env     # optional: add a Gemini API key
+cp .env.example .env     # optional: add an OpenAI API key
 npm run dev
 ```
 
-Without a key, WorkPalz uses its offline analyser, handbook search and simple offline answers, so the demo works without Wi-Fi. With a key from [Google AI Studio](https://aistudio.google.com/apikey), the themes, Ask WorkPalz, Ask AI and handbook drafts use Gemini. Never commit `.env`.
+Without a key, WorkPalz uses its offline analyser, handbook search and simple offline answers, so the demo works without Wi-Fi. With a key from [OpenAI](https://platform.openai.com/api-keys), the themes, Ask WorkPalz, Ask AI and handbook drafts use OpenAI (`gpt-5.6-luna` by default; change `MAIN_VITE_OPENAI_MODEL` to use another model). Never commit `.env`, and don't share an installer built with your key in `.env`: the key is built into the app.
 
 | Command | What it does |
 |---|---|
@@ -104,10 +104,10 @@ src/
 ├── main/                    Electron main process (Node)
 │   ├── index.ts             windows, tray icon, IPC, shortcuts, notch placement
 │   ├── store.ts             data store + privacy-sanitised HR views, impact numbers
-│   ├── ai.ts                theme analysis (Gemini + offline)
+│   ├── ai.ts                theme analysis (OpenAI + offline)
 │   ├── assistant.ts         Ask AI for HR/managers + handbook drafts
 │   ├── ask.ts               grounded handbook Q&A
-│   ├── gemini.ts            Gemini client with timeout
+│   ├── openai.ts            OpenAI client with timeout
 │   ├── handbook.ts          fictional company handbook
 │   └── seed.ts              fictional demo data: new hires and colleagues
 ├── preload/index.ts         the only API the UI can call

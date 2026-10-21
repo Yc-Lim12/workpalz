@@ -84,7 +84,7 @@ export default function Assistant({ view }: { view: AssistantView }) {
             <span aria-hidden="true" className="text-[color:var(--hr-blue)]">✦</span>
             <h2 className="m-0 text-[15px] font-bold">WorkPalz AI</h2>
             <span className="ml-auto text-[12px]" style={{ color: C.muted }}>
-              {source === "offline" ? "Offline mode" : source === "gemini" ? "Gemini" : `Knows the whole dashboard · ${view.team}`}
+              {source === "offline" ? "Offline mode" : source === "openai" ? "OpenAI" : `Knows the whole dashboard · ${view.team}`}
             </span>
           </header>
 

@@ -18,6 +18,7 @@ let hr: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let layout: IslandLayout = { notch: false, topInset: 0 };
 let dialogOpen = false;
+let islandInteractive = false; // true = the see-through island window is catching clicks
 
 let currentShortcuts: Shortcuts = { ...DEFAULT_SHORTCUTS };
 
@@ -200,7 +201,10 @@ function simulateReply(ping: Ping, c: Colleague) {
 function registerIpc() {
   const me = () => store.employee(ME_ID)!;
 
-  ipcMain.on("island:set-interactive", (_e, on: boolean) => island?.setIgnoreMouseEvents(!on, { forward: true }));
+  ipcMain.on("island:set-interactive", (_e, on: boolean) => {
+    islandInteractive = !!on;
+    island?.setIgnoreMouseEvents(!on, { forward: true });
+  });
   ipcMain.on("island:focus", () => island?.focus());
   ipcMain.on("island:release-focus", () => island?.blur());
   ipcMain.handle("island:layout", () => layout);
@@ -367,7 +371,7 @@ app.whenReady().then(() => {
   applyShortcuts();
 
   if (process.env.WORKPALZ_E2E) {
-    (globalThis as Record<string, unknown>).__workpalz = { sendIsland, openHrDashboard };
+    (globalThis as Record<string, unknown>).__workpalz = { sendIsland, openHrDashboard, isIslandInteractive: () => islandInteractive };
   }
 });
 

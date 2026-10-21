@@ -44,7 +44,22 @@ export default function IslandApp() {
   
   const toggleFocusRef = useRef<() => void>(() => {});
   const lastOpened = useRef(0); 
-  const isNavigating = useRef(false); // NEW: The shield!
+
+  // The island window is big and see-through, and sits on top of every app. It only catches
+  // clicks while the pointer is actually on the island (or the hide bar); everywhere else,
+  // clicks go to the app underneath. Decided from the pointer's position, so it can't get stuck.
+  const interactive = useRef(false);
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  const setInteractive = (on: boolean) => {
+    if (interactive.current === on) return;
+    interactive.current = on;
+    api.setInteractive(on);
+  };
+  const recheckPointer = () => {
+    const p = pointer.current;
+    const el = p ? document.elementFromPoint(p.x, p.y) : null;
+    setInteractive(!!el?.closest(".island-shell, [data-island-hit]"));
+  };
 
   const unread = notices.filter((n) => !n.read);
   const openRequests = requests.filter((r) => r.status !== "resolved").length;
@@ -71,14 +86,6 @@ export default function IslandApp() {
     setHidden(false);
     if (userAction && v !== "pill") api.focusIsland();
     lastOpened.current = Date.now(); 
-    
-    // BUGFIX: Throw up the Navigation Shield for 400ms during the transition.
-    // This forces the island to stay clickable even if Framer Motion shrinks it!
-    isNavigating.current = true;
-    setTimeout(() => { isNavigating.current = false; }, 400);
-    api.setInteractive(true);
-    hovering.current = true;
-
     setView(v);
   }, []);
 
@@ -92,7 +99,7 @@ export default function IslandApp() {
     collapse();
     setHidden(true);
     hovering.current = false;
-    api.setInteractive(false);
+    setInteractive(false);
   }, [collapse]);
 
   // Tell them how to get it back, then hide. An auto-hide is called off if they're using it.
@@ -113,6 +120,29 @@ export default function IslandApp() {
     setHidden(false);
     setLastActive(Date.now());
   };
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      pointer.current = { x: e.clientX, y: e.clientY };
+      recheckPointer();
+    };
+    const onLeave = () => {
+      pointer.current = null;
+      setInteractive(false);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.documentElement.addEventListener("mouseleave", onLeave);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.documentElement.removeEventListener("mouseleave", onLeave);
+    };
+  }, []);
+
+  // The island grows or shrinks when the view changes, so the still pointer may now be on or off it
+  useEffect(() => {
+    const id = window.setTimeout(recheckPointer, 450);
+    return () => window.clearTimeout(id);
+  }, [view, hidden]);
 
   const refresh = useCallback(async () => {
     const [r, n, pg] = await Promise.all([api.listMyRequests(), api.listMyNotices(), api.listMyPings()]);
@@ -267,14 +297,11 @@ export default function IslandApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [collapse]);
 
+  // Clickability is handled by the pointer tracking above; hover only keeps the menu open
   const handleHover = (on: boolean) => {
-    // BUGFIX: If the animation is running, completely ignore fake mouse-leaves!
-    if (isNavigating.current && !on) return; 
-
     if (hiddenRef.current) return;
     if (on) setLastActive(Date.now());
     hovering.current = on;
-    api.setInteractive(on);
     if (!on && viewRef.current === "menu") scheduleClose();
   };
 
@@ -403,8 +430,7 @@ export default function IslandApp() {
               aria-label="Show WorkPalz"
               title="Show WorkPalz"
               onClick={unhide}
-              onMouseEnter={() => api.setInteractive(true)}
-              onMouseLeave={() => api.setInteractive(false)}
+              data-island-hit
               initial={{ opacity: 0, scaleX: 0.4 }}
               animate={{ opacity: 1, scaleX: 1 }}
               exit={{ opacity: 0, scaleX: 0.4 }}

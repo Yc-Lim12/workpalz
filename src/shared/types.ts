@@ -48,7 +48,7 @@ export type HandbookEntry = {
 };
 
 // HR fills a handbook gap: the AI drafts, HR edits and publishes
-export type HandbookDraft = { title: string; answer: string; keywords: string[]; source: "gemini" | "offline" };
+export type HandbookDraft = { title: string; answer: string; keywords: string[]; source: "openai" | "offline" };
 export type HandbookInput = { title: string; answer: string; keywords: string[]; askIds: string[] };
 // Drafts mark facts the AI can't know like this; they must be filled in before publishing
 export const DRAFT_PLACEHOLDER = "[HR:";
@@ -68,7 +68,7 @@ export type AskResult = {
   answered: boolean;
   answer: string;
   entry: { title: string; link?: string; linkLabel?: string } | null;
-  source: "gemini" | "handbook";
+  source: "openai" | "handbook";
 };
 
 // ---------- Quick requests (IT / HR tickets) ----------
@@ -126,7 +126,7 @@ export type Theme = {
 
 export type Analysis = {
   generatedAt: string;
-  source: "gemini" | "offline";
+  source: "openai" | "offline";
   themes: Theme[];
 };
 
@@ -212,7 +212,7 @@ export type HrStats = {
 export type AssistantMessage = { role: "user" | "assistant"; text: string };
 // A manager only ever sees their own team, as patterns (no quotes, no single requests)
 export type AssistantView = { tab: "overview" | "requests" | "questions" | "followups" | "checkins"; team: string; role: "hr" | "manager" };
-export type AssistantReply = { answer: string; suggestions: string[]; source: "gemini" | "offline" };
+export type AssistantReply = { answer: string; suggestions: string[]; source: "openai" | "offline" };
 
 // ---------- Island ----------
 

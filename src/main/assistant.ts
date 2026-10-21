@@ -3,11 +3,11 @@
 // opted-in check-ins carry names for HR, but names are never sent to the AI.
 // A manager's assistant only gets their own team, without check-in notes or
 // request details, so it can't point at individuals (enforced here, not in the UI).
-// Gemini when a key is set; a simple offline answerer otherwise.
+// OpenAI when a key is set; a simple offline answerer otherwise.
 import { DRAFT_PLACEHOLDER, REQUEST_CATEGORIES, type AssistantMessage, type HandbookDraft, type AssistantReply, type AssistantView } from "../shared/types";
 import { store } from "./store";
 import { tokens } from "./ask";
-import { geminiJson } from "./gemini";
+import { aiJson } from "./openai";
 
 const MAX_ROWS = 150;
 const daysAgo = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
@@ -79,7 +79,7 @@ export async function askAssistant(messages: AssistantMessage[], view: Assistant
       : "HR. They can see every team";
 
   try {
-    const ai = await geminiJson<{ answer: string; suggestions?: string[] }>(`You are the WorkPalz assistant. You help support new hires in their first 90 days.
+    const ai = await aiJson<{ answer: string; suggestions?: string[] }>(`You are the WorkPalz assistant. You help support new hires in their first 90 days.
 You are talking to ${who}. All data is voluntary (check-ins, questions to the handbook, IT/HR requests) and has no names.
 
 Rules:
@@ -100,10 +100,10 @@ ${history.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`).j
 
 Return JSON only: {"answer": string, "suggestions": string[]}`);
     if (ai?.answer) {
-      return { answer: String(ai.answer), suggestions: (ai.suggestions ?? []).slice(0, 3).map(String), source: "gemini" };
+      return { answer: String(ai.answer), suggestions: (ai.suggestions ?? []).slice(0, 3).map(String), source: "openai" };
     }
   } catch (err) {
-    console.error("[assistant] Gemini failed, using offline answers:", err);
+    console.error("[assistant] OpenAI failed, using offline answers:", err);
   }
   return answerOffline(question, view, data);
 }
@@ -149,7 +149,7 @@ function answerOffline(question: string, view: AssistantView, d: Snapshot): Assi
       `This week ${where}: ${s.checkedIn} of ${s.newHires} new hires checked in, ${s.negative} said stuck, frustrated or overloaded, ${s.openRequests} open requests, ${s.unanswered} unanswered questions.`
     );
   }
-  lines.push("(Offline mode: add a Gemini key for full answers.)");
+  lines.push("(Offline mode: add an OpenAI key for full answers.)");
 
   return {
     answer: lines.join("\n"),
@@ -170,7 +170,7 @@ export async function draftHandbookEntry(questions: string[]): Promise<HandbookD
     .map((h) => JSON.stringify({ title: h.title, answer: h.answer }));
 
   try {
-    const ai = await geminiJson<{ title: string; answer: string; keywords: string[] }>(`You help HR write a company handbook entry for new hires.
+    const ai = await aiJson<{ title: string; answer: string; keywords: string[] }>(`You help HR write a company handbook entry for new hires.
 New hires asked these questions and the handbook had no answer:
 ${qs.map((q) => `- ${JSON.stringify(q)}`).join("\n")}
 
@@ -188,11 +188,11 @@ Return JSON only: {"title": string, "answer": string, "keywords": string[]}`);
         title: String(ai.title).slice(0, 80),
         answer: String(ai.answer).slice(0, 1000),
         keywords: (ai.keywords ?? []).map((k) => String(k).toLowerCase().slice(0, 40)).slice(0, 8),
-        source: "gemini",
+        source: "openai",
       };
     }
   } catch (err) {
-    console.error("[assistant] Gemini failed, using an offline draft:", err);
+    console.error("[assistant] OpenAI failed, using an offline draft:", err);
   }
 
   const first = qs[0] ?? "";

@@ -85,7 +85,7 @@ export default function Overview(p: {
           </h2>
           {p.analysis && (
             <span className="text-[13px]" style={{ color: C.muted }}>
-              {p.analysis.source === "gemini" ? "Gemini" : "Offline analyser"} · {ago(p.analysis.generatedAt)}
+              {p.analysis.source === "openai" ? "OpenAI" : "Offline analyser"} · {ago(p.analysis.generatedAt)}
             </span>
           )}
           {p.staleAnalysis && (
