@@ -6,7 +6,7 @@ WorkPalz has three levels of automated testing, plus a manual check before demo 
 |---|---|---|---|
 | 1. Typecheck | `npm run typecheck` | ~5 s | Does the code make sense? |
 | 2. Unit tests | `npm test` | ~1 s | Is the logic right? (21 tests) |
-| 3. End-to-end | `npm run build && npm run test:e2e` | ~1.5 min | Does the real app work? (93 checks) |
+| 3. End-to-end | `npm run build && npm run test:e2e` | ~1.5 min | Does the real app work? (94 checks) |
 | 4. Manual demo run | see below | ~5 min | Does it look and feel right? |
 
 ## 1. Typecheck
@@ -57,7 +57,7 @@ npm run test:e2e
 1. The pill shows "Wk 2"; the menu has 5 features
 2. Ask WorkPalz: a jargon answer labelled "From the Team Glossary", a link button, "not in the company guide", then × clears the old answer and shows recent questions; first Esc clears, second closes
 3. The Back button works; clicking into another app closes the island; half-typed text is kept
-4. Smart Quick request: "laptop won't connect to the vpn" → VPN guide offered first → "Still need help" → System access already picked; then a hardware problem → "Request sent"
+4. Smart Quick request: "laptop won't connect to the vpn" → one screen: VPN guide offered, "Goes to: IT · System access" already picked; then a hardware problem → Change shows all options → "Send to IT" → "Sent to IT"
 5. Check-in prompt → "Tell me if HR acts on this" is ticked → pick "Frustrated" → send → "Thanks" with a guide tip
 6. The focus timer counts down in the pill
 7. Ping: "the staging server won't run" → ✦ Who can help → suggests Ahmad; search "vpn" → only Ravi from IT shows → send → his reply pops up
@@ -81,7 +81,7 @@ npm run test:e2e
 
 ### What you get
 
-- `PASS` or `FAIL` for each check, ending with **"93/93 checks passed"**
+- `PASS` or `FAIL` for each check, ending with **"94/94 checks passed"**
 - A screenshot of every screen in `tests/e2e/shots/` (handy for pitch slides; not committed to git)
 - Full results, including any accessibility problems, in `tests/e2e/shots/results.json`
 

@@ -298,8 +298,8 @@ function TipCard({ tip, onOpenLink, children }: { tip: GuideTip; onOpenLink: (ur
   );
 }
 
-// Smart Quick request: describe it in your own words; the AI picks the category
-// and offers a guide answer first. The category can always be changed.
+// Smart Quick request: describe it in your own words, then one screen with everything:
+// a matching guide answer (if any), where it goes (picked for you, changeable) and one Send button.
 export function RequestView(p: {
   mine: SupportRequest[];
   onSuggest: (text: string) => Promise<RequestSuggestion>;
@@ -312,12 +312,13 @@ export function RequestView(p: {
   const [category, setCategory] = useDraft<RequestCategory | null>("rq.cat", null);
   const [desc, setDesc] = useDraft("rq.desc", "");
   const [suggestion, setSuggestion] = useDraft<RequestSuggestion | null>("rq.sug", null);
-  const [needsTicket, setNeedsTicket] = useDraft("rq.ticket", false); // tried the tip, still stuck
+  const [changing, setChanging] = useState(false); // showing all categories
   const [checking, setChecking] = useState(false);
   const [sending, setSending] = useState(false);
   const recent = p.mine.slice(0, 3);
+  const cat = REQUEST_CATEGORIES.find((c) => c.id === category);
 
-  const next = async () => {
+  const check = async () => {
     if (!desc.trim() || checking) return;
     setChecking(true);
     try {
@@ -329,9 +330,9 @@ export function RequestView(p: {
     }
   };
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!suggestion) return next();
+  const submit = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!suggestion) return check();
     if (!category || !desc.trim() || sending) return;
     setSending(true);
     await p.onSubmit({ category, description: desc.trim() });
@@ -340,7 +341,7 @@ export function RequestView(p: {
 
   return (
     <form onSubmit={submit} aria-labelledby="rq-title" className="flex flex-col gap-3">
-      <Header id="rq-title" color={BLUE} title="Quick request" right="Goes to IT or HR" onBack={p.onBack} />
+      <Header id="rq-title" color={BLUE} title="Quick request" right="IT or HR will help" onBack={p.onBack} />
       <div className="flex flex-col gap-1.5">
         <label htmlFor="rq-desc" className="text-[15px] font-semibold [color:var(--ink)]">What's the problem?</label>
         <textarea
@@ -351,8 +352,11 @@ export function RequestView(p: {
             setDesc(e.target.value);
             if (suggestion) {
               setSuggestion(null); // changed the problem: check again
-              setNeedsTicket(false);
+              setChanging(false);
             }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(); // Cmd/Ctrl+Enter: continue, then send
           }}
           maxLength={280}
           rows={2}
@@ -363,52 +367,69 @@ export function RequestView(p: {
 
       {!suggestion ? (
         <div className="flex gap-2">
-          <Btn type="submit" variant="primary" className="flex-[2]" disabled={!desc.trim() || checking}>{checking ? "Checking…" : "Next"}</Btn>
+          <Btn type="submit" variant="primary" className="flex-[2]" disabled={!desc.trim() || checking}>{checking ? "Checking…" : "Continue"}</Btn>
           <Btn className="flex-1" onClick={p.onClose}>Cancel</Btn>
         </div>
       ) : (
         <>
-          {/* One step at a time: first the guide answer, then (only if still stuck) the request */}
-          {suggestion.tip && !needsTicket ? (
-            <>
-              <TipCard tip={suggestion.tip} onOpenLink={p.onOpenLink} />
-              <div className="flex gap-2">
-                <Btn
-                  variant="primary"
-                  className="flex-1"
-                  onClick={async () => {
-                    await p.onSolved(suggestion.tip!.id);
-                    clearDrafts("rq.");
-                  }}
-                >
-                  That fixed it
-                </Btn>
-                <Btn className="flex-1" onClick={() => setNeedsTicket(true)}>Still need help</Btn>
-              </div>
-            </>
-          ) : (
-          <>
           {suggestion.tip && (
-            <p className="m-0 text-[12.5px]" style={{ color: MUTED }}>Tried: {suggestion.tip.title} ({suggestion.tip.from})</p>
+            <TipCard tip={suggestion.tip} onOpenLink={p.onOpenLink}>
+              <Btn
+                className="self-start !min-h-10"
+                onClick={async () => {
+                  await p.onSolved(suggestion.tip!.id);
+                  clearDrafts("rq.");
+                }}
+              >
+                That fixed it
+              </Btn>
+            </TipCard>
           )}
-          <fieldset className="m-0 border-0 p-0">
-            <legend className="mb-2 p-0 text-[13px] font-semibold [color:var(--ink)]">
-              Still need help? It goes to: <span style={{ color: MUTED }}>(picked for you, change if wrong)</span>
-            </legend>
-            <div className="grid grid-cols-3 gap-1.5">
-              {REQUEST_CATEGORIES.map((c) => (
-                <Choice key={c.id} type="radio" name="category" checked={category === c.id} onChange={() => setCategory(c.id)} activeBg="var(--blue)" className="min-h-12 px-2 text-[12.5px] leading-tight [background-color:var(--bg)] [color:var(--ink)]">
-                  {c.label}
-                </Choice>
-              ))}
-            </div>
-          </fieldset>
+
+          {!changing ? (
+            <p className="m-0 flex flex-wrap items-center gap-x-2 text-[13.5px] [color:var(--ink)]">
+              <span>
+                Goes to: <strong>{cat?.dept} · {cat?.label}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setChanging(true)}
+                aria-label={`Change where it goes, now ${cat?.dept} ${cat?.label}`}
+                className="min-h-9 cursor-pointer rounded-lg px-2 text-[13px] font-semibold underline underline-offset-2 [color:var(--blue)] hover:[background-color:var(--bg)]"
+              >
+                Change
+              </button>
+            </p>
+          ) : (
+            <fieldset className="m-0 border-0 p-0">
+              <legend className="mb-2 p-0 text-[13px] font-semibold [color:var(--ink)]">Where should it go?</legend>
+              <div className="grid grid-cols-3 gap-1.5">
+                {REQUEST_CATEGORIES.map((c) => (
+                  <Choice
+                    key={c.id}
+                    type="radio"
+                    name="category"
+                    checked={category === c.id}
+                    onChange={() => {
+                      setCategory(c.id);
+                      setChanging(false);
+                    }}
+                    activeBg="var(--blue)"
+                    className="min-h-12 px-2 text-[12.5px] leading-tight [background-color:var(--bg)] [color:var(--ink)]"
+                  >
+                    {c.label}
+                  </Choice>
+                ))}
+              </div>
+            </fieldset>
+          )}
+
           <div className="flex gap-2">
-            <Btn type="submit" variant="primary" className="flex-[2]" disabled={!category || !desc.trim() || sending}>{sending ? "Sending…" : "Send request"}</Btn>
+            <Btn type="submit" variant="primary" className="flex-[2]" disabled={!category || !desc.trim() || sending}>
+              {sending ? "Sending…" : suggestion.tip ? `Still stuck? Send to ${cat?.dept}` : `Send to ${cat?.dept}`}
+            </Btn>
             <Btn className="flex-1" onClick={p.onClose}>Cancel</Btn>
           </div>
-          </>
-          )}
         </>
       )}
 

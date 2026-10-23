@@ -3,6 +3,7 @@ import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import Island, { type PillInfo } from "./Island";
 import { AMBER, BLUE, type IslandView } from "./theme";
 import { AskView, CheckInThanksView, CheckInView, clearAskHistory, MenuView, NoticeView, PingView, PrivacyView, RequestView, SettingsView, StepBackView, TourView, displayShortcut, isMac, loadShortcuts } from "./views";
+import { REQUEST_CATEGORIES } from "../../../shared/types";
 import type { CheckInReply, Colleague, Employee, IslandLayout, Notice, Ping, SupportRequest } from "../../../shared/types";
 
 const api = window.workpalz;
@@ -471,7 +472,9 @@ export default function IslandApp() {
                 onSubmit={async (input) => {
                   await api.submitRequest(input);
                   collapse();
-                  showFlash("Request sent");
+                  const dept = REQUEST_CATEGORIES.find((c) => c.id === input.category)?.dept ?? "IT";
+                  showFlash(`Sent to ${dept}`);
+                  say(`Request sent to ${dept}. You'll get updates here.`);
                 }}
               />
             )}

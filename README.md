@@ -15,7 +15,7 @@ New employees often struggle quietly in their first months: missing tools, uncle
   - **Team Glossary**: company jargon and project names ("Q4 OKR", "Project Aurora")
 
   Works like a search box: an × clears the question and the old answer, the first `Esc` clears and the second closes, and **recent questions** are listed to ask again (kept on that computer only; removed by "Delete my data").
-- **Smart Quick request** (AI): describe the problem in your own words. WorkPalz first offers a matching answer from the company guide ("That fixed it" = no ticket needed); if you're still stuck, the category is already picked and you just press Send. Track status afterwards.
+- **Smart Quick request** (AI): describe the problem in your own words. One screen shows a matching answer from the company guide ("That fixed it" = no ticket needed) and where the request goes ("Goes to: IT · System access", picked for you, with Change); if you're still stuck, press "Send to IT". Track status afterwards.
 - **Ping a colleague**: search by name or topic ("VPN", "staging server"), or describe the problem and press **✦ Who can help with this?** (AI suggests the right person). See who's available and ask them for help. Only the colleague sees it, never HR.
 - **Weekly check-in**: one tap plus an optional note. The question changes with the onboarding stage. Anonymous to HR by default, with a choice to hear back if HR acts on it (see below). If you say you're stuck, WorkPalz gives something back straight away (AI): a matching guide answer and the status of your related open request.
 - **Focus timer**: 25-minute focus session shown in the pill.
@@ -76,7 +76,7 @@ Without a key, WorkPalz uses its offline analyser, company guide search and simp
 |---|---|
 | `npm run dev` | Run the app |
 | `npm test` | Run the logic tests (21) |
-| `npm run build && npm run test:e2e` | Drive the real app through every feature, screenshot it and run a WCAG scan on every screen (93 checks) |
+| `npm run build && npm run test:e2e` | Drive the real app through every feature, screenshot it and run a WCAG scan on every screen (94 checks) |
 | `npm run typecheck` | TypeScript check |
 | `npm run dist:win` | Build a Windows installer (run on Windows) |
 | `npm run dist:mac` | Build a macOS .dmg |
