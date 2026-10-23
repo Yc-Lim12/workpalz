@@ -2,14 +2,27 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import Island, { type PillInfo } from "./Island";
 import { AMBER, BLUE, type IslandView } from "./theme";
-import { AskView, CheckInView, MenuView, NoticeView, PingView, PrivacyView, RequestView, SettingsView, displayShortcut, isMac, loadShortcuts } from "./views";
+import { AskView, CheckInView, MenuView, NoticeView, PingView, PrivacyView, RequestView, SettingsView, StepBackView, TourView, displayShortcut, isMac, loadShortcuts } from "./views";
 import type { Colleague, Employee, IslandLayout, Notice, Ping, SupportRequest } from "../../../shared/types";
 
 const api = window.workpalz;
 const FOCUS_MS = 25 * 60 * 1000;
 const MENU_AUTO_CLOSE_MS = 8000;
-// The idle pill hides itself so it stops covering other apps (a running focus timer stays)
-const IDLE_HIDE_MS = 10 * 60 * 1000;
+// The idle pill shrinks to a small dot so it's in the way less, but never disappears by itself.
+// It stays full size while it has something for you (an update, a check-in, a running focus timer).
+const IDLE_SHRINK_MS = 10 * 60 * 1000;
+const TOUR_KEY = "tour-done";
+const QUIET_KEY = "quiet-until";
+
+const readQuiet = () => {
+  try {
+    const v = Number(localStorage.getItem(QUIET_KEY));
+    return v > Date.now() ? v : null;
+  } catch {
+    return null;
+  }
+};
+const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
 const mmss = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -31,7 +44,12 @@ export default function IslandApp() {
   const [flash, setFlash] = useState<string | null>(null);
   const [announce, setAnnounce] = useState("");
   const [hidden, setHidden] = useState(false);
+  const [mini, setMini] = useState(false);
+  // Quiet (do not disturb): nothing pops up; anything waiting shows as a number by the clock
+  const [quietUntil, setQuietUntil] = useState<number | null>(readQuiet);
   const [lastActive, setLastActive] = useState(Date.now());
+  const quiet = quietUntil !== null;
+  const away = hidden || quiet;
 
   const contentRef = useRef<HTMLDivElement>(null);
   const hovering = useRef(false);
@@ -39,8 +57,10 @@ export default function IslandApp() {
   const prevUnread = useRef(0);
   const viewRef = useRef(view);
   viewRef.current = view;
-  const hiddenRef = useRef(hidden);
-  hiddenRef.current = hidden;
+  const hiddenRef = useRef(away);
+  hiddenRef.current = away;
+  const quietRef = useRef(quiet);
+  quietRef.current = quiet;
   
   const toggleFocusRef = useRef<() => void>(() => {});
   const lastOpened = useRef(0); 
@@ -74,8 +94,17 @@ export default function IslandApp() {
     window.setTimeout(() => setAnnounce(text), 50); 
   };
 
+  const setQuiet = (until: number | null) => {
+    setQuietUntil(until);
+    try {
+      if (until) localStorage.setItem(QUIET_KEY, String(until));
+      else localStorage.removeItem(QUIET_KEY);
+    } catch {}
+  };
+
   const showFlash = (text: string) => {
-    setHidden(false);
+    if (!quietRef.current) setHidden(false);
+    setMini(false);
     setFlash(text);
     say(text);
     window.setTimeout(() => setFlash(null), 3000);
@@ -84,6 +113,8 @@ export default function IslandApp() {
   const open = useCallback((v: IslandView, userAction = true) => {
     clearClose();
     setHidden(false);
+    setMini(false);
+    if (userAction) setQuiet(null); // opening it yourself ends Quiet
     if (userAction && v !== "pill") api.focusIsland();
     lastOpened.current = Date.now(); 
     setView(v);
@@ -102,22 +133,31 @@ export default function IslandApp() {
     setInteractive(false);
   }, [collapse]);
 
-  // Tell them how to get it back, then hide. An auto-hide is called off if they're using it.
-  const hideWithHint = useCallback((auto: boolean) => {
+  // Tell them how to get it back, then step back (hide for now, or Quiet until a time)
+  const stepBackWithHint = (quietTill: number | null) => {
     const key = loadShortcuts().toggle;
     const where = isMac ? "menu bar" : "system tray";
     collapse();
-    setFlash(key ? `${displayShortcut(key)} to show` : `Show it from the ${where}`);
-    say(`WorkPalz will hide. ${key ? `Press ${displayShortcut(key)}, click the bar at the top, or use` : "Click the bar at the top, or use"} the WorkPalz icon in the ${where} to bring it back`);
+    setFlash(quietTill ? `Quiet until ${clock(quietTill)}` : key ? `${displayShortcut(key)} to show` : `Show it from the ${where}`);
+    say(
+      `${quietTill ? `Quiet until ${clock(quietTill)}. Nothing will pop up; anything waiting shows as a number on the WorkPalz icon in the ${where}.` : "WorkPalz will hide."} ${
+        key ? `Press ${displayShortcut(key)}, or use` : "Use"
+      } the WorkPalz icon in the ${where} to bring it back`
+    );
     window.setTimeout(() => {
       setFlash(null);
-      if (auto && hovering.current) setLastActive(Date.now());
-      else hide();
+      if (quietTill) {
+        setQuiet(quietTill);
+        hovering.current = false;
+        setInteractive(false);
+      } else hide();
     }, 2500);
-  }, [collapse, hide]);
+  };
 
   const unhide = () => {
     setHidden(false);
+    setQuiet(null);
+    setMini(false);
     setLastActive(Date.now());
   };
 
@@ -142,7 +182,7 @@ export default function IslandApp() {
   useEffect(() => {
     const id = window.setTimeout(recheckPointer, 450);
     return () => window.clearTimeout(id);
-  }, [view, hidden]);
+  }, [view, hidden, mini, quiet]);
 
   const refresh = useCallback(async () => {
     const [r, n, pg] = await Promise.all([api.listMyRequests(), api.listMyNotices(), api.listMyPings()]);
@@ -162,14 +202,25 @@ export default function IslandApp() {
     api.getLayout().then(setLayout);
     api.listColleagues().then(setColleagues);
     refresh();
-    return api.onDataChanged(() => {
+
+    // First day: open once by itself and show how WorkPalz works
+    let tour: number | undefined;
+    try {
+      if (!localStorage.getItem(TOUR_KEY)) tour = window.setTimeout(() => open("tour", false), 1200);
+    } catch {}
+    const stop = api.onDataChanged(() => {
       refresh();
       api.getMe().then(setMe);
     });
-  }, [refresh]);
+    return () => {
+      window.clearTimeout(tour);
+      stop();
+    };
+  }, [refresh, open]);
 
   useEffect(() => {
-    if (unread.length > prevUnread.current && viewRef.current === "pill") {
+    // During Quiet nothing pops up: the update waits, counted on the tray icon
+    if (unread.length > prevUnread.current && viewRef.current === "pill" && !quietRef.current) {
       open("notice", false);
       say(unread[0].from ? `${unread[0].title}: ${unread[0].body}` : `Update from HR: ${unread[0].title}`);
     }
@@ -181,7 +232,8 @@ export default function IslandApp() {
       api.onIslandEvent((ev) => {
         if (ev.type === "layout") setLayout(ev.layout);
         if (ev.type === "checkin-prompt") {
-          setHidden(false);
+          if (!quietRef.current) setHidden(false);
+          setMini(false);
           setPending(true);
           say("Weekly check-in is ready");
         }
@@ -201,16 +253,21 @@ export default function IslandApp() {
         if (ev.type === "toggle-focus") {
           toggleFocusRef.current();
         }
-        if (ev.type === "show") {
-          setHidden(false);
-          setLastActive(Date.now());
-        }
+        if (ev.type === "show") unhide();
         if (ev.type === "hide") hide();
         if (ev.type === "toggle-hidden") {
-          if (hiddenRef.current) {
-            setHidden(false);
-            setLastActive(Date.now());
-          } else hide();
+          if (hiddenRef.current) unhide();
+          else hide();
+        }
+        if (ev.type === "idle") setMini(true);
+        if (ev.type === "quiet") {
+          if (ev.until === "off") unhide();
+          else {
+            collapse();
+            setQuiet(ev.until === "hour" ? Date.now() + 60 * 60 * 1000 : tomorrowMorning());
+            hovering.current = false;
+            setInteractive(false);
+          }
         }
 
         if (ev.type === "blur" && viewRef.current !== "pill" && viewRef.current !== "notice") {
@@ -230,12 +287,25 @@ export default function IslandApp() {
     [open, collapse, hide]
   );
 
-  // Auto-hide the idle pill; any activity, a running focus timer or something new keeps it up
+  // Shrink the idle pill; any activity, a running focus timer or something waiting keeps it full size
   useEffect(() => {
-    if (hidden || view !== "pill" || focusEnd || unread.length || flash) return;
-    const id = window.setTimeout(() => hideWithHint(true), IDLE_HIDE_MS);
+    if (away || mini || view !== "pill" || focusEnd || unread.length || pending || flash) return;
+    const id = window.setTimeout(() => setMini(true), IDLE_SHRINK_MS);
     return () => window.clearTimeout(id);
-  }, [hidden, view, focusEnd, unread.length, flash, lastActive, hideWithHint]);
+  }, [away, mini, view, focusEnd, unread.length, pending, flash, lastActive]);
+
+  // Quiet ends by itself at the chosen time
+  useEffect(() => {
+    if (!quietUntil) return;
+    const id = window.setTimeout(() => setQuiet(null), Math.max(0, quietUntil - Date.now()));
+    return () => window.clearTimeout(id);
+  }, [quietUntil]);
+
+  // The tray / menu bar icon shows how many things are waiting, and whether Quiet is on
+  const attention = unread.length + (pending ? 1 : 0);
+  useEffect(() => {
+    api.reportStatus({ attention, quietUntil });
+  }, [attention, quietUntil]);
 
   const toggleFocus = () => {
     if (focusEnd) {
@@ -300,7 +370,10 @@ export default function IslandApp() {
   // Clickability is handled by the pointer tracking above; hover only keeps the menu open
   const handleHover = (on: boolean) => {
     if (hiddenRef.current) return;
-    if (on) setLastActive(Date.now());
+    if (on) {
+      setLastActive(Date.now());
+      setMini(false); // hovering the small dot brings the full pill back
+    }
     hovering.current = on;
     if (!on && viewRef.current === "menu") scheduleClose();
   };
@@ -337,13 +410,14 @@ export default function IslandApp() {
     <MotionConfig reducedMotion="user">
       <main aria-label="WorkPalz" className="relative flex h-full w-full items-start justify-center" style={{ paddingTop: layout.notch ? 0 : 6 }}>
         <motion.div
-          animate={hidden ? { opacity: 0, y: -24, scale: 0.9 } : { opacity: 1, y: 0, scale: 1 }}
+          animate={away ? { opacity: 0, y: -24, scale: 0.9 } : { opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.25, ease: "easeOut" }}
-          style={{ pointerEvents: hidden ? "none" : "auto" }}
-          aria-hidden={hidden}
+          style={{ pointerEvents: away ? "none" : "auto" }}
+          aria-hidden={away}
         >
           <Island
             view={view}
+            mini={mini && view === "pill"}
             layout={layout}
             pill={pill}
             onPillClick={onPillClick}
@@ -358,7 +432,7 @@ export default function IslandApp() {
                 openRequests={openRequests}
                 onOpen={(v) => open(v)}
                 onToggleFocus={toggleFocus}
-                onHide={() => hideWithHint(false)}
+                onHide={() => open("away")}
                 onClose={collapse}
               />
             )}
@@ -416,7 +490,28 @@ export default function IslandApp() {
               <PrivacyView getData={api.getMyData} onExport={api.exportMyData} onDelete={api.deleteMyData} onBack={() => open("menu")} />
             )}
             {view === "settings" && (
-              <SettingsView onBack={() => open("menu")} />
+              <SettingsView onBack={() => open("menu")} onReplayTour={() => open("tour")} />
+            )}
+            {view === "away" && (
+              <StepBackView
+                onBack={() => open("menu")}
+                onHide={() => stepBackWithHint(null)}
+                onQuietHour={() => stepBackWithHint(Date.now() + 60 * 60 * 1000)}
+                onQuietTomorrow={() => stepBackWithHint(tomorrowMorning())}
+              />
+            )}
+            {view === "tour" && (
+              <TourView
+                name={me?.name.split(" ")[0] ?? ""}
+                shortcut={displayShortcut(loadShortcuts().main)}
+                where={isMac ? "menu bar" : "system tray"}
+                onDone={() => {
+                  try {
+                    localStorage.setItem(TOUR_KEY, "1");
+                  } catch {}
+                  collapse();
+                }}
+              />
             )}
           </Island>
         </motion.div>
@@ -424,7 +519,7 @@ export default function IslandApp() {
         {/* While hidden, a small bar stays at the top so people know where it went. Click, not hover,
             so reaching for browser tabs doesn't pop it open. */}
         <AnimatePresence>
-          {hidden && (
+          {hidden && !quiet && (
             <motion.button
               type="button"
               aria-label="Show WorkPalz"
@@ -449,6 +544,14 @@ export default function IslandApp() {
       </main>
     </MotionConfig>
   );
+}
+
+// Quiet "until tomorrow" means until 9 am the next day
+function tomorrowMorning() {
+  const t = new Date();
+  t.setDate(t.getDate() + 1);
+  t.setHours(9, 0, 0, 0);
+  return t.getTime();
 }
 
 function EmptyCollapse({ onCollapse }: { onCollapse: () => void }) {

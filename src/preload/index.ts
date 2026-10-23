@@ -15,6 +15,7 @@ const api: WorkPalzApi = {
   setShortcuts: (shortcuts) => ipcRenderer.send("island:set-shortcuts", shortcuts),
 
   setInteractive: (on) => ipcRenderer.send("island:set-interactive", on),
+  reportStatus: (status) => ipcRenderer.send("island:status", status),
   focusIsland: () => ipcRenderer.send("island:focus"),
   releaseFocus: () => ipcRenderer.send("island:release-focus"),
   getLayout: call("island:layout"),

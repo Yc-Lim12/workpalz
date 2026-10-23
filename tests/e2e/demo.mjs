@@ -33,6 +33,7 @@ const app = await electron.launch({
 });
 
 const island = await app.firstWindow();
+island.setDefaultTimeout(15000); // a missing button fails the run instead of hanging it
 island.on("console", (m) => m.type() === "error" && errors.push(`island: ${m.text()}`));
 island.on("pageerror", (e) => errors.push(`island: ${e.message}`));
 await island.waitForSelector(".island-shell");
@@ -63,6 +64,22 @@ const openMenu = async () => {
 
 // ---------- Island ----------
 
+// First day: the island opens itself once with a short welcome tour
+await island.getByText("I'm WorkPalz").waitFor({ timeout: 5000 });
+await settle(400);
+await shot(island, "tour-welcome");
+await axe(island, "island welcome tour");
+check("First launch shows the welcome tour", true);
+await island.getByRole("button", { name: "Next" }).click();
+await settle(200);
+check("Tour shows the open shortcut", /(Cmd|Ctrl)\+Alt\+Space/.test(await island.locator(".island-shell").innerText()));
+await island.getByRole("button", { name: "Next" }).click();
+await island.getByRole("button", { name: "Next" }).click();
+await settle(200);
+check("Tour explains anonymity and updates", (await island.locator(".island-shell").innerText()).includes("HR still won't know it was you"));
+await island.getByRole("button", { name: "Got it" }).click();
+await settle();
+
 await shot(island, "pill");
 check("Pill shows onboarding week", (await island.locator(".island-shell").innerText()).includes("Wk 2"));
 
@@ -81,7 +98,7 @@ await island.getByText("OKR (Objectives and Key Results)").waitFor();
 await settle(300);
 await shot(island, "ask-jargon");
 await axe(island, "island ask (answer)");
-check("Ask answers jargon from handbook", true);
+check("Ask answers company jargon and says it's from the Team Glossary", (await island.locator(".island-shell").innerText()).includes("From the Team Glossary"));
 
 // Ask: link
 await island.locator("#ask-input").fill("expense form");
@@ -90,12 +107,12 @@ await island.getByRole("button", { name: /Expense form/ }).waitFor();
 await shot(island, "ask-link");
 check("Ask returns a link button", true);
 
-// Ask: not in handbook
+// Ask: not in the company guide
 await island.locator("#ask-input").fill("how do I get staging server access");
 await island.keyboard.press("Enter");
-await island.getByText(/couldn't find that in the handbook/).waitFor();
+await island.getByText(/couldn't find that in the company guide/).waitFor();
 await shot(island, "ask-not-found");
-check("Ask admits when the handbook has no answer", true);
+check("Ask admits when the company guide has no answer", true);
 
 // Back button returns to the menu
 await island.getByRole("button", { name: "Back to menu" }).click();
@@ -137,9 +154,10 @@ await shot(island, "checkin-prompt");
 check("Check-in prompt pulses in the pill", (await island.locator(".island-shell").innerText()).includes("Weekly check-in"));
 await island.getByRole("button", { name: /Weekly check-in is ready/ }).click();
 await settle();
-check("Question matches onboarding week 2", (await island.locator("legend").innerText()).includes("tools and access"));
+check("Question matches onboarding week 2", (await island.locator("legend").first().innerText()).includes("tools and access"));
 await island.getByText("Frustrated", { exact: true }).click();
 await island.locator("#ci-note").fill("Still waiting on my software licence");
+check("Check-in offers 'Tell me if HR acts on this', ticked by default", await island.getByLabel(/Tell me if HR acts on this/).isChecked());
 await shot(island, "checkin-form");
 await axe(island, "island check-in");
 await island.getByRole("button", { name: "Send", exact: true }).click();
@@ -182,9 +200,46 @@ check("Colleague's reply pops up on the island", true);
 await island.getByRole("button", { name: /Got it|Next/ }).click();
 await settle();
 
-// Hide: a small bar stays at the top and brings it back
+// Idle: the pill shrinks to a small dot instead of disappearing; hovering brings it back
+await island.mouse.move(5, 600); // nobody is pointing at it
+await settle(300);
+const fullWidth = (await island.locator(".island-shell").boundingBox()).width;
+await hook("sendIsland", { type: "idle" });
+await settle(700);
+const miniBox = await island.locator(".island-shell").boundingBox();
+await shot(island, "mini-pill");
+// No notch: a 56 px dot. MacBook notch: just wider than the notch, so the dot shows beside it.
+check("Idle pill shrinks to a small dot", miniBox.width <= fullWidth - 150, `${Math.round(fullWidth)} → ${Math.round(miniBox.width)} px`);
+await island.mouse.move(miniBox.x + miniBox.width / 2, miniBox.y + miniBox.height / 2);
+await settle(700);
+check("Hovering the dot brings the full pill back", (await island.locator(".island-shell").boundingBox()).width === fullWidth);
+await island.mouse.move(5, 600);
+
+// Quiet: nothing pops up, the tray icon counts what's waiting
 await openMenu();
 await island.getByRole("button", { name: "Hide", exact: true }).click();
+await settle();
+await shot(island, "step-back");
+await axe(island, "island step back");
+await island.getByRole("button", { name: /Quiet for 1 hour/ }).click();
+await settle(400);
+check("Quiet says until when", /Quiet until/.test(await island.locator(".island-shell").innerText()));
+await island.waitForTimeout(2800);
+check("Quiet steps the island back", (await hook("trayStatus")).quietUntil > Date.now());
+await hook("sendIsland", { type: "checkin-prompt" });
+await settle(500);
+check("During Quiet nothing pops up, the tray counts it", (await hook("trayStatus")).attention === 1 && (await island.locator(".island-shell").evaluate((el) => getComputedStyle(el.parentElement).opacity)) === "0");
+await hook("sendIsland", { type: "quiet", until: "off" });
+await settle(600);
+check("Turning Quiet off brings it back with the check-in waiting", (await island.locator(".island-shell").innerText()).includes("Weekly check-in"));
+await hook("sendIsland", { type: "collapse" }); // clears the demo check-in prompt again
+await settle(1500); // closing hands focus back to the OS; let that settle before the next click
+
+// Hide for now: a small bar stays at the top and brings it back
+await openMenu();
+await island.getByRole("button", { name: "Hide", exact: true }).click();
+await settle();
+await island.getByRole("button", { name: /Hide for now/ }).click();
 await settle(400);
 check("Hide shows how to bring it back", /to show|Show it from/.test(await island.locator(".island-shell").innerText()));
 await island.getByRole("button", { name: "Show WorkPalz" }).waitFor({ timeout: 4000 });
@@ -208,6 +263,7 @@ await settle();
 check("Esc collapses the island", (await island.locator(".island-shell").innerText()).includes("WorkPalz"));
 
 // Keyboard: global shortcut opens the island and moves focus inside
+await settle(1000); // Esc just handed focus back to the OS; let that settle first
 await island.bringToFront();
 await hook("sendIsland", { type: "open" });
 await settle(800);
@@ -238,11 +294,24 @@ await island.mouse.move(5, 600);
 await settle(800);
 check("Closed by clicking another app: clicks go through", (await interactive()) === false);
 
+// Moving the mouse off the island while typing must not close it
+await openMenu();
+await island.getByRole("button", { name: /Ask WorkPalz/ }).click();
+await settle();
+await island.locator("#ask-input").fill("typing a question");
+const blursBefore = await hook("blurCount");
+await island.mouse.move(5, 600);
+await settle(1200);
+check("Mouse drifting off the island doesn't close it", (await hook("blurCount")) === blursBefore && (await island.locator("#ask-input").count()) === 1, `blurs: ${blursBefore} → ${await hook("blurCount")}`);
+await island.keyboard.press("Escape");
+await settle(1000);
+
 // ---------- HR dashboard ----------
 
 const hrPromise = app.waitForEvent("window");
 await hook("openHrDashboard");
 const hr = await hrPromise;
+hr.setDefaultTimeout(15000);
 hr.on("console", (m) => m.type() === "error" && errors.push(`hr: ${m.text()}`));
 hr.on("pageerror", (e) => errors.push(`hr: ${e.message}`));
 await hr.waitForSelector("main#main");
@@ -263,7 +332,7 @@ await axe(hr, "HR overview (themes)");
 const overview = await hr.locator("main").innerText();
 check("Engineering theme is 4 of 5 after the live check-in", overview.includes("4 of 5 Engineering new hires"));
 check("Trend shown vs last week", /Up from 1 last week/.test(overview));
-check("Marketing themes found", overview.includes("Unclear priorities") && overview.includes("Questions the handbook can't answer"));
+check("Marketing themes found", overview.includes("Unclear priorities") && overview.includes("Questions the company guide can't answer"));
 
 // Follow-up → close the loop
 await hr.getByRole("button", { name: /Create follow-up for Waiting on tools, licences or access, Engineering/ }).click();
@@ -272,10 +341,12 @@ await hr.getByRole("button", { name: /^Follow-ups/ }).click();
 await hr.waitForTimeout(300);
 await shot(hr, "hr-followups", null);
 await axe(hr, "HR follow-ups");
+check("HR sees how many will be told, never who", /will tell \d+ new hires?, you won't see who/.test(await hr.locator("main").innerText()));
 await hr.getByRole("checkbox").first().check();
 await island.getByText("Update on something you raised").waitFor({ timeout: 4000 });
 await settle(500);
 await shot(island, "island-update-from-hr");
+check("The update says HR doesn't know who received it", (await island.locator(".island-shell").innerText()).includes("HR doesn't know who received it"));
 check("Island expands with an update when HR finishes the follow-up", true);
 await axe(island, "island notice");
 await island.getByRole("button", { name: /Got it|Next/ }).click();
@@ -306,15 +377,16 @@ const stagingGap = hr.locator("li", { hasText: "Asked 3×" });
 await stagingGap.getByRole("button", { name: /Draft answer with AI/ }).click();
 await hr.getByRole("button", { name: "Draft it" }).click();
 await hr.getByLabel("Answer new hires will see").waitFor();
-check("Publish is locked while [HR: …] placeholders remain", await hr.getByRole("button", { name: "Publish to handbook" }).isDisabled());
-await shot(hr, "hr-handbook-draft", null);
-await axe(hr, "HR handbook draft");
+check("The AI suggests the right place: IT Help Centre for server access", await hr.getByRole("radio", { name: /IT Help Centre/ }).isChecked());
+check("Publish is locked while [HR: …] placeholders remain", await hr.getByRole("button", { name: /^Publish to/ }).isDisabled());
+await shot(hr, "hr-guide-draft", null);
+await axe(hr, "HR company guide draft");
 await hr.getByLabel("Answer new hires will see").fill("Ask your team lead to approve staging access in the IT portal under Access. It's usually ready the same day.");
-await hr.getByRole("button", { name: "Publish to handbook" }).click();
+await hr.getByRole("button", { name: "Publish to IT Help Centre" }).click();
 await island.getByText("Your question has an answer").first().waitFor({ timeout: 4000 });
 await settle(500);
 await shot(island, "island-question-answered");
-check("The new hire who asked is told the handbook now answers it", true);
+check("The new hire who asked is told the IT Help Centre now answers it", (await island.locator(".island-shell").innerText()).includes("IT Help Centre now covers it"));
 await island.getByRole("button", { name: /Got it|Next/ }).click();
 await settle();
 await hr.waitForTimeout(300);
@@ -333,7 +405,7 @@ await hr.getByLabel("Team").selectOption("Marketing");
 await hr.waitForTimeout(400);
 const mk = await hr.locator("main").innerText();
 check("Team filter shows only Marketing themes", !mk.includes("4 of 5 Engineering") && mk.includes("Marketing"));
-check("Impact section is shown", mk.includes("Impact") && mk.includes("Handbook gaps closed"));
+check("Impact section is shown", mk.includes("Impact") && mk.includes("Company guide gaps closed"));
 await hr.getByLabel("Team").selectOption("All");
 
 // Ask AI: the assistant on every page (offline answers here)

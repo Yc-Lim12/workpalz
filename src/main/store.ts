@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
+  guideLabel,
   NEGATIVE_MOODS,
   type Action,
   type Analysis,
@@ -101,6 +102,12 @@ export function resetStore() {
 
 const strip = <T extends { contributorIds: string[] }>({ contributorIds: _c, ...rest }: T) => rest;
 
+// A person's latest check-in says whether they want updates when HR acts on what they raised
+function wantsUpdates(employeeId: string) {
+  const latest = data.checkIns.filter((c) => c.employeeId === employeeId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  return latest?.notifyMe !== false;
+}
+
 export const store = {
   // ----- raw (main process only) -----
   employees: () => data.employees,
@@ -138,8 +145,9 @@ export const store = {
     save();
   },
 
-  handbook: (): HandbookEntry[] => [...HANDBOOK, ...data.handbook],
-  handbookAdded: () => data.handbook,
+  // The whole company guide. Entries HR added before sources existed count as Employee Handbook.
+  handbook: (): HandbookEntry[] => [...HANDBOOK, ...data.handbook.map((h) => ({ ...h, source: h.source ?? "handbook" }))],
+  handbookAdded: (): HandbookEntry[] => data.handbook.map((h) => ({ ...h, source: h.source ?? "handbook" })),
 
   // Publishing closes the loop: the questions count as answered, and whoever asked hears about it.
   // Returns how many people were told.
@@ -147,7 +155,8 @@ export const store = {
     const entry: HandbookEntry = {
       id: `hr-${randomUUID()}`,
       title: input.title,
-      kind: "how-to",
+      kind: input.place === "glossary" ? "jargon" : input.place === "it" ? "how-to" : "policy",
+      source: input.place,
       keywords: input.keywords,
       answer: input.answer,
     };
@@ -159,11 +168,11 @@ export const store = {
       a.entryId = entry.id;
       askers.set(a.employeeId, a.question);
     }
-    for (const [employeeId, question] of askers) {
-      store.notify(employeeId, "Your question has an answer", `You asked: "${question}"\nThe handbook now covers it: ${entry.title}. Ask WorkPalz to read it.`);
+    for (const [employeeId, question] of [...askers].filter(([id]) => wantsUpdates(id))) {
+      store.notify(employeeId, "Your question has an answer", `You asked: "${question}"\nThe ${guideLabel(entry.source)} now covers it: ${entry.title}. Ask WorkPalz to read it.`);
     }
     save();
-    return askers.size;
+    return [...askers.keys()].filter(wantsUpdates).length;
   },
 
   colleagues: () => COLLEAGUES,
@@ -270,7 +279,7 @@ export const store = {
       oldestOpenDays: open.length ? Math.floor(Math.max(...open.map((r) => days(r.createdAt, now())))) : null,
       followUpsDone: done.length,
       followUpsOpen: actions.length - done.length,
-      peopleTold: new Set(done.flatMap((a) => a.contributorIds)).size,
+      peopleTold: new Set(done.flatMap((a) => a.contributorIds.filter(wantsUpdates))).size,
       handbookAdded: data.handbook.length,
       questionsNowAnswered: data.asks.filter((a) => inTeam(a) && a.entryId?.startsWith("hr-")).length,
       checkInRate: { thisWeek: rate(inLastWeek), lastWeek: rate(inWeekBefore) },
@@ -302,7 +311,7 @@ export const store = {
     return { ...data.analysis, themes: data.analysis.themes.map(strip) };
   },
 
-  hrActions: (): Action[] => data.actions.map(strip),
+  hrActions: (): Action[] => data.actions.map((a) => ({ ...strip(a), peopleToTell: a.contributorIds.filter(wantsUpdates).length })),
 
   addAction(themeId: string) {
     const t = data.analysis?.themes.find((x) => x.id === themeId);
@@ -328,12 +337,12 @@ export const store = {
     a.status = status;
     a.doneAt = status === "done" ? now() : undefined;
     if (status === "done") {
-      for (const employeeId of a.contributorIds) {
+      for (const employeeId of a.contributorIds.filter(wantsUpdates)) {
         store.notify(employeeId, "Update on something you raised", `You and others raised: ${a.themeTitle.toLowerCase()}.\nWhat was done: ${a.action}`);
       }
     }
     save();
-    return status === "done" ? a.contributorIds.length : 0;
+    return status === "done" ? a.contributorIds.filter(wantsUpdates).length : 0;
   },
 
   notify(employeeId: string, title: string, body: string, from?: string) {

@@ -2,13 +2,14 @@
 import { type ReactNode, type RefObject } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { IslandLayout } from "../../../shared/types";
-import { MORPH, NOTCH_GAP, NOTCH_PILL_WIDTH, RADIUS, WIDTH, type IslandView } from "./theme";
+import { MINI_HEIGHT, MINI_SIDE, MINI_WIDTH, MORPH, NOTCH_GAP, NOTCH_PILL_WIDTH, RADIUS, WIDTH, type IslandView } from "./theme";
 import { Dot } from "./ui";
 
 export type PillInfo = { label: string; time?: string; color: string; pulse?: boolean; ariaLabel: string };
 
 type Props = {
   view: IslandView;
+  mini?: boolean; // idle: shrunk to a small dot, still there and clickable
   layout: IslandLayout;
   pill: PillInfo;
   onPillClick: () => void;
@@ -24,11 +25,11 @@ const contentAnim = {
   exit: { opacity: 0, filter: "blur(4px)", scale: 0.95, transition: { duration: 0.15, ease: "easeIn" } },
 };
 
-export default function Island({ view, layout, pill, onPillClick, onHoverChange, contentRef, children }: Props) {
+export default function Island({ view, mini = false, layout, pill, onPillClick, onHoverChange, contentRef, children }: Props) {
   const isPill = view === "pill";
   const notch = layout.notch;
-  const width = isPill && notch ? NOTCH_PILL_WIDTH : WIDTH[view];
-  const r = RADIUS[view];
+  const width = isPill && mini ? (notch ? NOTCH_GAP + MINI_SIDE * 2 : MINI_WIDTH) : isPill && notch ? NOTCH_PILL_WIDTH : WIDTH[view];
+  const r = isPill && mini && !notch ? MINI_HEIGHT / 2 : RADIUS[view];
   const top = notch ? Math.min(r, 12) : r; 
 
   // BUGFIX: Combining into a single borderRadius string allows Framer Motion to perfectly calculate the scale distortion!
@@ -46,13 +47,17 @@ export default function Island({ view, layout, pill, onPillClick, onHoverChange,
       {/* BUGFIX: Changed from mode="wait" to mode="popLayout" so the height morphs smoothly and instantly */}
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.div 
-          key={isPill ? "pill" : view} 
+          key={isPill ? (mini ? "mini" : "pill") : view} 
           layout="position" 
           {...contentAnim}
           className="w-full flex flex-col justify-start"
         >
           {isPill ? (
-            <PillContent pill={pill} notch={notch} height={notch ? layout.topInset : 40} onClick={onPillClick} />
+            mini ? (
+              <MiniContent pill={pill} notch={notch} height={notch ? layout.topInset : MINI_HEIGHT} onClick={onPillClick} />
+            ) : (
+              <PillContent pill={pill} notch={notch} height={notch ? layout.topInset : 40} onClick={onPillClick} />
+            )
           ) : (
             <div ref={contentRef} className="px-5 pb-5 w-full box-border" style={{ paddingTop: notch ? layout.topInset + 10 : 18 }}>
               {children}
@@ -84,6 +89,21 @@ function PillContent({ pill, notch, height, onClick }: { pill: PillInfo; notch: 
       <Dot color={pill.color} pulse={pill.pulse} />
       <span className="truncate text-[14px] font-semibold">{pill.label}</span>
       {pill.time && <span className="mono text-[13px] [color:var(--muted)]">{pill.time}</span>}
+    </button>
+  );
+}
+
+// The shrunk pill: just the status dot. Hover brings the full pill back, click opens it.
+function MiniContent({ pill, notch, height, onClick }: { pill: PillInfo; notch: boolean; height: number; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={pill.ariaLabel}
+      className={`flex w-full cursor-pointer items-center ${notch ? "justify-start" : "justify-center"}`}
+      style={{ height, paddingLeft: notch ? MINI_SIDE / 2 - 4 : 0 }}
+    >
+      <Dot color={pill.color} pulse={pill.pulse} />
     </button>
   );
 }

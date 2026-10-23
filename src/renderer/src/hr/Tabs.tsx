@@ -2,6 +2,8 @@
 import { useId, useState } from "react";
 import {
   DRAFT_PLACEHOLDER,
+  GUIDE_SOURCES,
+  guideLabel,
   MOODS,
   REQUEST_CATEGORIES,
   STATUS_LABEL,
@@ -9,6 +11,7 @@ import {
   type HandbookDraft,
   type HandbookEntry,
   type HandbookInput,
+  type GuideSource,
   type HrAsk,
   type HrCheckIn,
   type RequestStatus,
@@ -163,11 +166,11 @@ export function QuestionsTab({
     <div className="flex flex-col gap-5">
       <Title
         title="Questions new hires ask"
-        intro="From Ask WorkPalz. Anonymous, by team only. Questions the handbook can't answer show where onboarding is missing something. Let the AI draft an answer, check it, and publish it to the handbook."
+        intro="From Ask WorkPalz. Anonymous, by team only. Questions the company guide (Employee Handbook, IT Help Centre, Team Glossary) can't answer show where onboarding is missing something. Let the AI draft an answer, check it, and publish it to the right place."
       />
       <div className="flex flex-wrap gap-4">
         <Card as="section" className="flex min-w-0 flex-[2_1_420px] flex-col gap-3">
-          <h2 className="m-0 text-[16px] font-bold">Not in the handbook</h2>
+          <h2 className="m-0 text-[16px] font-bold">Not in the company guide</h2>
           {gapList.length === 0 ? (
             <p className="m-0 text-[14px]" style={{ color: C.muted }}>
               Every question was answered.
@@ -220,7 +223,9 @@ export function QuestionsTab({
               <h2 className="m-0 mt-3 text-[16px] font-bold">Added by HR</h2>
               <ul className="m-0 flex flex-col gap-2 pl-5 text-[14px]">
                 {added.map((h) => (
-                  <li key={h.id}>{h.title}</li>
+                  <li key={h.id}>
+                    {h.title} <span style={{ color: C.muted }}>({guideLabel(h.source)})</span>
+                  </li>
                 ))}
               </ul>
             </>
@@ -248,6 +253,7 @@ function GapEditor({
   const [title, setTitle] = useState("");
   const [answer, setAnswer] = useState("");
   const [keywords, setKeywords] = useState("");
+  const [place, setPlace] = useState<GuideSource>("handbook");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -260,6 +266,7 @@ function GapEditor({
       setTitle(d.title);
       setAnswer(d.answer);
       setKeywords(d.keywords.join(", "));
+      setPlace(d.place);
     } catch {
       setError("Couldn't draft an answer. Please try again.");
     } finally {
@@ -279,6 +286,7 @@ function GapEditor({
         title: title.trim(),
         answer: answer.trim(),
         keywords: keywords.split(",").map((k) => k.trim()).filter(Boolean),
+        place,
         askIds: gap.ids,
       });
     } catch {
@@ -315,9 +323,34 @@ function GapEditor({
       <p className="m-0 text-[12.5px]" style={{ color: C.muted }}>
         Draft by {draft.source === "openai" ? "OpenAI" : "the offline helper (add an OpenAI key for a full draft)"}. Check every word before publishing.
       </p>
+      <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0">
+        <legend className="mb-1.5 p-0 text-[13px] font-semibold">Where does this belong?</legend>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-2">
+          {GUIDE_SOURCES.map((g) => (
+            <label
+              key={g.id}
+              className="flex cursor-pointer items-start gap-2 rounded-xl border border-[color:var(--hr-border)] bg-[color:var(--hr-surface)] p-3"
+              style={{ outline: place === g.id ? "2px solid var(--hr-blue)" : undefined }}
+            >
+              <input type="radio" name={`${id}-place`} checked={place === g.id} onChange={() => setPlace(g.id)} className="mt-0.5 h-4 w-4 shrink-0 accent-[color:var(--hr-blue)]" />
+              <span className="flex flex-col gap-0.5">
+                <span className="text-[13.5px] font-semibold">{g.label}</span>
+                <span className="text-[12px]" style={{ color: C.muted }}>
+                  {g.holds}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+        {place === "handbook" && (
+          <p className="m-0 text-[12.5px]" style={{ color: C.muted }}>
+            The Employee Handbook is formal policy: check the wording with whoever owns the policy before publishing.
+          </p>
+        )}
+      </fieldset>
       <div className="flex flex-col gap-1.5">
         <label htmlFor={`${id}-title`} className="text-[13px] font-semibold">
-          Handbook title
+          Title
         </label>
         <input id={`${id}-title`} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} className={`${field} min-h-11`} />
       </div>
@@ -353,7 +386,7 @@ function GapEditor({
       )}
       <div className="flex flex-wrap gap-2">
         <Button onClick={publish} disabled={!canPublish}>
-          {busy ? "Publishing…" : "Publish to handbook"}
+          {busy ? "Publishing…" : `Publish to ${guideLabel(place)}`}
         </Button>
         <Button variant="ghost" onClick={run} disabled={busy}>
           Redraft
@@ -376,7 +409,7 @@ export function FollowUpsTab({ actions, onStatus }: { actions: Action[]; onStatu
     <div className="flex flex-col gap-5">
       <Title
         title="Follow-ups"
-        intro="Marking a follow-up done tells the new hires who raised it that action was taken. They stay anonymous to you."
+        intro="Marking a follow-up done tells the new hires who raised it, and asked to hear back, that action was taken. WorkPalz delivers it: you see how many are told, never who."
       />
       {actions.length === 0 ? (
         <Empty>No follow-ups yet. Create one from an AI theme on the Overview.</Empty>
@@ -397,8 +430,10 @@ export function FollowUpsTab({ actions, onStatus }: { actions: Action[]; onStatu
                       {a.action}
                     </span>
                     <span className="text-[12.5px]" style={{ color: C.muted }}>
-                      {a.themeTitle} · {a.owner} · created {ago(a.createdAt)}
-                      {a.status === "done" && " · employees notified"}
+                      {a.themeTitle} · {a.owner} · created {ago(a.createdAt)} ·{" "}
+                      {a.status === "done"
+                        ? `${a.peopleToTell ?? 0} new hire${a.peopleToTell === 1 ? " was" : "s were"} told`
+                        : `will tell ${a.peopleToTell ?? 0} new hire${a.peopleToTell === 1 ? "" : "s"}, you won't see who`}
                     </span>
                   </span>
                 </label>

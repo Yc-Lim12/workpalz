@@ -1,6 +1,6 @@
 // AI theme analysis across three VOLUNTARY sources:
 //   1. negative weekly check-ins
-//   2. questions the handbook couldn't answer (onboarding gaps)
+//   2. questions the company guide couldn't answer (onboarding gaps)
 //   3. open IT/HR requests
 // OpenAI when a key is set; offline rule-based analyser otherwise or if the call fails.
 import { randomUUID } from "node:crypto";
@@ -110,7 +110,7 @@ async function analyseWithAi(thisWeek: Signal[], lastWeek: Signal[], employees: 
   }>(`You help an HR team spot early onboarding problems for new hires (first 90 days).
 All data below is VOLUNTARY and anonymised. Sources:
 - "check-in": a weekly check-in where the person said they were stuck, frustrated or overloaded
-- "question": a question the company handbook could NOT answer (an onboarding gap)
+- "question": a question the company guide (handbook, IT help, glossary) could NOT answer (an onboarding gap)
 - "request": an open IT/HR request
 
 New hires per team: ${JSON.stringify(sizes)}
@@ -197,10 +197,10 @@ const RULES: Rule[] = [
 ];
 
 const GAP_RULE: Rule = {
-  title: "Questions the handbook can't answer",
+  title: "Questions the company guide can't answer",
   match: /.*/,
-  summary: "Several new hires asked the same thing and the handbook had no answer. This is an onboarding gap.",
-  action: "Add a handbook answer for these questions and mention it in the next onboarding session.",
+  summary: "Several new hires asked the same thing and the company guide had no answer. This is an onboarding gap.",
+  action: "Add an answer to the company guide for these questions and mention it in the next onboarding session.",
 };
 
 function analyseOffline(thisWeek: Signal[], lastWeek: Signal[], employees: Employee[]): InternalTheme[] {
@@ -237,7 +237,7 @@ function analyseOffline(thisWeek: Signal[], lastWeek: Signal[], employees: Emplo
 
   for (const rule of RULES) build(rule, thisWeek, lastWeek);
 
-  // Leftover unanswered questions = handbook gaps
+  // Leftover unanswered questions = gaps in the company guide
   const leftoverQuestions = thisWeek.filter((s) => s.source === "question" && !used.has(s));
   build(
     GAP_RULE,
@@ -245,7 +245,7 @@ function analyseOffline(thisWeek: Signal[], lastWeek: Signal[], employees: Emplo
     lastWeek.filter((s) => s.source === "question")
   );
   for (const gap of themes.filter((t) => t.title === GAP_RULE.title)) {
-    gap.suggestedAction = `Add a handbook answer for "${gap.evidence[0]?.text}" and mention it in the next onboarding session.`;
+    gap.suggestedAction = `Add an answer to the company guide for "${gap.evidence[0]?.text}" and mention it in the next onboarding session.`;
   }
 
   return themes.sort(byUrgency);

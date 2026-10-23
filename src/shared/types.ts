@@ -30,26 +30,40 @@ export type CheckIn = {
   mood: Mood;
   note: string;
   shareName: boolean;
+  // "Tell me if HR acts on this". WorkPalz, not HR, delivers the update; HR never learns who got it.
+  // Older saved check-ins don't have it: treated as yes.
+  notifyMe?: boolean;
   createdAt: string;
 };
 
-export type CheckInInput = { mood: Mood; note: string; shareName: boolean };
+export type CheckInInput = { mood: Mood; note: string; shareName: boolean; notifyMe: boolean };
 
 // ---------- Ask WorkPalz (jargon + quick search) ----------
+// Answers come from the "company guide": the company's knowledge, kept in three places.
+
+export type GuideSource = "handbook" | "it" | "glossary";
+
+export const GUIDE_SOURCES: { id: GuideSource; label: string; holds: string }[] = [
+  { id: "handbook", label: "Employee Handbook", holds: "Formal HR policy: leave, conduct, probation, pay" },
+  { id: "it", label: "IT Help Centre", holds: "Systems, access and how-tos" },
+  { id: "glossary", label: "Team Glossary", holds: "Company jargon, project names and rituals" },
+];
+export const guideLabel = (s: GuideSource | undefined) => GUIDE_SOURCES.find((g) => g.id === s)?.label ?? "Employee Handbook";
 
 export type HandbookEntry = {
   id: string;
   title: string;
   kind: "jargon" | "policy" | "how-to";
+  source: GuideSource; // where this lives; shown with every answer
   keywords: string[];
   answer: string;
   link?: string;
   linkLabel?: string;
 };
 
-// HR fills a handbook gap: the AI drafts, HR edits and publishes
-export type HandbookDraft = { title: string; answer: string; keywords: string[]; source: "openai" | "offline" };
-export type HandbookInput = { title: string; answer: string; keywords: string[]; askIds: string[] };
+// HR fills a gap in the company guide: the AI drafts (and suggests where it belongs), HR edits and publishes
+export type HandbookDraft = { title: string; answer: string; keywords: string[]; place: GuideSource; source: "openai" | "offline" };
+export type HandbookInput = { title: string; answer: string; keywords: string[]; place: GuideSource; askIds: string[] };
 // Drafts mark facts the AI can't know like this; they must be filled in before publishing
 export const DRAFT_PLACEHOLDER = "[HR:";
 
@@ -67,7 +81,7 @@ export type Ask = {
 export type AskResult = {
   answered: boolean;
   answer: string;
-  entry: { title: string; link?: string; linkLabel?: string } | null;
+  entry: { title: string; from: string; link?: string; linkLabel?: string } | null; // from = "Employee Handbook" etc.
   source: "openai" | "handbook";
 };
 
@@ -140,6 +154,7 @@ export type Action = {
   status: "open" | "done";
   createdAt: string;
   doneAt?: string;
+  peopleToTell?: number; // how many will get the update (HR sees the number, never who)
 };
 
 export type Notice = {
@@ -180,7 +195,7 @@ export type PingInput = { colleagueId: string; message: string };
 
 // ---------- What HR is allowed to see (no employee IDs) ----------
 
-export type HrCheckIn = Omit<CheckIn, "employeeId" | "shareName"> & { name: string | null };
+export type HrCheckIn = Omit<CheckIn, "employeeId" | "shareName" | "notifyMe"> & { name: string | null };
 export type HrAsk = { id: string; team: string; week: number; question: string; answered: boolean; topic: string | null; createdAt: string };
 
 // What WorkPalz has changed so far: proof the loop works
@@ -232,6 +247,8 @@ export type IslandEvent =
   | { type: "toggle-hidden" }
   | { type: "show" }
   | { type: "hide" }
+  | { type: "idle" } // shrink now (what 10 idle minutes does)
+  | { type: "quiet"; until: "hour" | "tomorrow" | "off" }
   | { type: "blur" }
   | { type: "collapse" };
 
@@ -246,6 +263,9 @@ export const DEFAULT_SHORTCUTS: Shortcuts = {
   toggle: "CommandOrControl+Alt+B",
 };
 
+// The island tells the main process what to show on the tray / menu bar icon
+export type IslandStatus = { attention: number; quietUntil: number | null };
+
 export type MyDataSummary = { checkIns: number; questions: number; requests: number; pings: number };
 
 // ---------- window.workpalz ----------
@@ -254,6 +274,7 @@ export type WorkPalzApi = {
   // island window
   setShortcuts: (shortcuts: Shortcuts) => void;
   setInteractive: (on: boolean) => void;
+  reportStatus: (status: IslandStatus) => void;
   focusIsland: () => void;
   releaseFocus: () => void;
   getLayout: () => Promise<IslandLayout>;

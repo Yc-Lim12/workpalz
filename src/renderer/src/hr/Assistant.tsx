@@ -8,7 +8,7 @@ const api = window.workpalz;
 const STARTERS: Record<AssistantView["tab"], string[]> = {
   overview: ["Which team needs help most this week?", "Summarise this week for managers", "What changed since last week?"],
   requests: ["Which requests have waited longest?", "Are IT requests blocking new hires?", "What should IT fix first?"],
-  questions: ["What should we add to the handbook?", "Which questions keep coming up?", "Which team asks the most?"],
+  questions: ["What should we add to the company guide?", "Which questions keep coming up?", "Which team asks the most?"],
   followups: ["Which follow-ups are still open?", "Did our actions help?", "What should we follow up on next?"],
   checkins: ["What are new hires saying this week?", "Which team feels most stuck?", "Is anyone overloaded?"],
 };

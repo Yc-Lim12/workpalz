@@ -1,5 +1,6 @@
 // HR dashboard shell: header, navigation, team filter, live data and announcements.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { guideLabel } from "../../../shared/types";
 import type { Action, Analysis, HandbookEntry, HandbookInput, HrAsk, HrImpact, HrCheckIn, HrStats, RequestStatus, SupportRequest, Theme } from "../../../shared/types";
 import Assistant from "./Assistant";
 import Overview from "./Overview";
@@ -114,7 +115,8 @@ export default function HrDashboard() {
 
   const setActionStatus = async (id: string, s: Action["status"]) => {
     await api.setActionStatus(id, s);
-    say(s === "done" ? "Follow-up marked done. The employees who raised it have been notified." : "Follow-up reopened.");
+    const n = actions.find((a) => a.id === id)?.peopleToTell ?? 0;
+    say(s === "done" ? `Follow-up marked done. WorkPalz told ${n} new hire${n === 1 ? "" : "s"}; you won't see who.` : "Follow-up reopened.");
   };
 
   const setRequestStatus = async (id: string, s: RequestStatus) => {
@@ -124,7 +126,7 @@ export default function HrDashboard() {
 
   const publishHandbook = async (input: HandbookInput) => {
     const n = await api.publishHandbook(input);
-    say(`Added to the handbook. ${n} new hire${n === 1 ? " was" : "s were"} told their question now has an answer.`);
+    say(`Added to the ${guideLabel(input.place)}. ${n} new hire${n === 1 ? " was" : "s were"} told their question now has an answer.`);
   };
 
   const ALL_NAV: { id: Tab; label: string; badge?: number; hrOnly?: boolean }[] = [

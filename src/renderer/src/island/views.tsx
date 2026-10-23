@@ -67,13 +67,14 @@ export function CheckInView(p: { question: string; onSubmit: (i: CheckInInput) =
   const [mood, setMood] = useDraft<Mood | null>("ci.mood", null);
   const [note, setNote] = useDraft("ci.note", "");
   const [shareName, setShareName] = useDraft("ci.share", false);
+  const [notifyMe, setNotifyMe] = useDraft("ci.notify", true);
   const [sending, setSending] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!mood || sending) return;
     setSending(true);
-    await p.onSubmit({ mood, note: note.trim(), shareName });
+    await p.onSubmit({ mood, note: note.trim(), shareName, notifyMe });
     clearDrafts("ci.");
   };
 
@@ -99,10 +100,17 @@ export function CheckInView(p: { question: string; onSubmit: (i: CheckInInput) =
         <input id="ci-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={280} placeholder="e.g. still waiting on my software licence" className={`${inputClass} min-h-11`} />
       </div>
 
-      <label className="flex cursor-pointer items-center gap-2.5 text-[13px] [color:var(--muted)]">
-        <input type="checkbox" checked={shareName} onChange={(e) => setShareName(e.target.checked)} className="h-5 w-5 accent-[var(--amber)]" />
-        Share my name with HR. If unticked, HR only sees your team.
-      </label>
+      <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
+        <legend className="sr-only">Privacy choices</legend>
+        <label className="flex cursor-pointer items-center gap-2.5 text-[13px] [color:var(--muted)]">
+          <input type="checkbox" checked={shareName} onChange={(e) => setShareName(e.target.checked)} className="h-5 w-5 shrink-0 accent-[var(--amber)]" />
+          Share my name with HR. If unticked, HR only sees your team.
+        </label>
+        <label className="flex cursor-pointer items-center gap-2.5 text-[13px] [color:var(--muted)]">
+          <input type="checkbox" checked={notifyMe} onChange={(e) => setNotifyMe(e.target.checked)} className="h-5 w-5 shrink-0 accent-[var(--amber)]" />
+          Tell me if HR acts on this. WorkPalz delivers it, so HR still won't know it was you.
+        </label>
+      </fieldset>
 
       <div className="flex gap-2">
         <Btn type="submit" variant="primary" className="flex-[2]" disabled={!mood || sending}>{sending ? "Sending…" : "Send"}</Btn>
@@ -112,7 +120,8 @@ export function CheckInView(p: { question: string; onSubmit: (i: CheckInInput) =
   );
 }
 
-const EXAMPLES = ["What is a Q4 OKR?", "Expense form", "Holiday calendar", "What does LGTM mean?"];
+// One example from each part of the company guide
+const EXAMPLES = ["What is Project Aurora?", "Medical leave", "VPN setup", "Expense form"];
 
 export function AskView(p: { onAsk: (q: string) => Promise<AskResult>; onOpenLink: (url: string) => void; onBack: () => void }) {
   const [q, setQ] = useDraft("ask.q", "");
@@ -131,7 +140,7 @@ export function AskView(p: { onAsk: (q: string) => Promise<AskResult>; onOpenLin
 
   return (
     <section aria-labelledby="ask-title" className="flex flex-col gap-3">
-      <Header id="ask-title" color={BLUE} title="Ask WorkPalz" right="Answers from the handbook" onBack={p.onBack} />
+      <Header id="ask-title" color={BLUE} title="Ask WorkPalz" right="Answers from the company guide" onBack={p.onBack} />
       <form role="search" className="flex gap-2" onSubmit={(e) => { e.preventDefault(); run(q); }}>
         <input id="ask-input" data-autofocus value={q} onChange={(e) => setQ(e.target.value)} maxLength={200} placeholder="e.g. What's a Q4 OKR?" className={`${inputClass} min-h-11 flex-1`} />
         <Btn type="submit" variant="primary" disabled={!q.trim() || busy}>Ask</Btn>
@@ -152,7 +161,12 @@ export function AskView(p: { onAsk: (q: string) => Promise<AskResult>; onOpenLin
         {result && (
           <div className="flex flex-col gap-2.5 rounded-2xl [background-color:var(--bg)] p-4 border [border-color:var(--line)]">
             <p className="m-0 text-[12px]" style={{ color: MUTED }}>You asked: {asked}</p>
-            {result.entry && <h3 className="m-0 text-[15px] font-semibold [color:var(--ink)]">{result.entry.title}</h3>}
+            {result.entry && (
+              <div className="flex flex-col gap-0.5">
+                <p className="m-0 text-[12px] font-semibold" style={{ color: BLUE }}>From the {result.entry.from}</p>
+                <h3 className="m-0 text-[15px] font-semibold [color:var(--ink)]">{result.entry.title}</h3>
+              </div>
+            )}
             <p className="m-0 text-[14px] leading-relaxed [color:var(--ink)]">{result.answer}</p>
             {result.entry?.link && (
               <Btn variant="secondary" className="self-start" onClick={() => p.onOpenLink(result.entry!.link!)}>
@@ -240,7 +254,9 @@ export function NoticeView(p: { notice: Notice; more: number; onDone: () => void
       <Header id="nt-title" color={BLUE} title={p.notice.title} right={p.more ? `${p.more} more` : "just now"} />
       <p className="m-0 whitespace-pre-line text-[15px] leading-relaxed [color:var(--ink)]">{p.notice.body}</p>
       <p className="m-0 text-[12px]" style={{ color: MUTED }}>
-        {p.notice.from ? `${p.notice.from} replied to your ping.` : "Thanks for speaking up. Your feedback led to this."}
+        {p.notice.from
+          ? `${p.notice.from} replied to your ping.`
+          : "Thanks for speaking up. WorkPalz sent this to you; HR doesn't know who received it."}
       </p>
       <Btn variant="primary" data-autofocus onClick={p.onDone}>{p.more ? "Next" : "Got it"}</Btn>
     </section>
@@ -280,6 +296,9 @@ export function PrivacyView(p: { getData: () => Promise<MyDataSummary>; onExport
       </div>
       <p className="m-0 text-[12.5px] leading-snug [color:var(--muted)]">
         HR sees check-ins and questions by team only, unless you share your name. Pings go only to the person you pick, never to HR. Names are never sent to the AI. Nothing here is used for performance reviews.
+      </p>
+      <p className="m-0 text-[12.5px] leading-snug [color:var(--muted)]">
+        <strong className="[color:var(--ink)]">How can I hear back if I'm anonymous?</strong> WorkPalz, not HR, keeps a private note of what you raised. When HR fixes it, WorkPalz tells you. HR only sees how many people were told, never who. Untick "Tell me if HR acts on this" in your next check-in to stop updates.
       </p>
       {data && <p className="m-0 text-[13px]" style={{ color: MUTED }}>Stored now: {plural(data.checkIns, "check-in")}, {plural(data.questions, "question")}, {plural(data.requests, "request")}, {plural(data.pings, "ping")}.</p>}
       
@@ -497,7 +516,7 @@ export function loadShortcuts(): Shortcuts {
   }
 }
 
-export function SettingsView(p: { onBack: () => void }) {
+export function SettingsView(p: { onBack: () => void; onReplayTour: () => void }) {
   const [theme, setTheme] = useState(localStorage.getItem('app-theme') || 'dark');
   const [shortcuts, setShortcuts] = useState(loadShortcuts);
 
@@ -526,6 +545,13 @@ export function SettingsView(p: { onBack: () => void }) {
         >
           {theme === 'dark' ? 'Switch to Light ☀️' : 'Switch to Dark 🌙'}
         </button>
+        <button
+          type="button"
+          onClick={p.onReplayTour}
+          className="p-2 rounded-lg [background-color:var(--surface)] border [border-color:var(--line)] [color:var(--ink)] hover:opacity-80 text-[13px] transition font-medium cursor-pointer"
+        >
+          Show the welcome tour again
+        </button>
       </div>
 
       <div className="flex flex-col gap-2 max-h-[260px] overflow-y-auto pr-1 pb-1">
@@ -535,6 +561,87 @@ export function SettingsView(p: { onBack: () => void }) {
         <ShortcutRow label="Ask WorkPalz" value={shortcuts.ask} onChange={(v) => updateShortcut('ask', v)} />
         <ShortcutRow label="Toggle Focus Timer" value={shortcuts.focus} onChange={(v) => updateShortcut('focus', v)} />
         <ShortcutRow label="Show / Hide Island" value={shortcuts.toggle} onChange={(v) => updateShortcut('toggle', v)} />
+      </div>
+    </section>
+  );
+}
+// ---------- Step back: hide for now, or Quiet (do not disturb) ----------
+
+export function StepBackView(p: { onBack: () => void; onHide: () => void; onQuietHour: () => void; onQuietTomorrow: () => void }) {
+  const option = "flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-2xl [background-color:var(--bg)] border [border-color:var(--line)] px-3.5 py-3 text-left transition hover:opacity-80 active:scale-[0.98]";
+  return (
+    <section aria-labelledby="away-title" className="flex flex-col gap-3">
+      <Header id="away-title" color={BLUE} title="Step back" right="In a meeting?" onBack={p.onBack} />
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        <li>
+          <button type="button" data-autofocus className={option} onClick={p.onQuietHour}>
+            <span className="text-[14px] font-semibold [color:var(--ink)]">Quiet for 1 hour</span>
+            <span className="text-[12px]" style={{ color: MUTED }}>Nothing pops up. Anything new waits as a number by the clock.</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" className={option} onClick={p.onQuietTomorrow}>
+            <span className="text-[14px] font-semibold [color:var(--ink)]">Quiet until tomorrow</span>
+            <span className="text-[12px]" style={{ color: MUTED }}>Back at 9 am. Good for a day of meetings.</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" className={option} onClick={p.onHide}>
+            <span className="text-[14px] font-semibold [color:var(--ink)]">Hide for now</span>
+            <span className="text-[12px]" style={{ color: MUTED }}>Leaves a small bar at the top. Updates still pop up.</span>
+          </button>
+        </li>
+      </ul>
+      <p className="m-0 text-[12px] leading-snug" style={{ color: MUTED }}>
+        Full-screen apps like slides and video calls get the whole screen automatically.
+      </p>
+    </section>
+  );
+}
+
+// ---------- First-day welcome tour ----------
+
+export function TourView(p: { name: string; shortcut: string; where: string; onDone: () => void }) {
+  const [step, setStep] = useState(0);
+  const steps = [
+    {
+      title: p.name ? `Hi ${p.name}, I'm WorkPalz` : "Hi, I'm WorkPalz",
+      body: "Your helper for your first 90 days. Ask about jargon or policies, send IT a request, or ping a colleague who can help.",
+    },
+    {
+      title: "Open me from anywhere",
+      body: `Press ${p.shortcut} in any app, or just click me up here.`,
+      key: p.shortcut,
+    },
+    {
+      title: "I'll stay out of your way",
+      body: `When you're busy I shrink to a small dot. In full-screen apps, or when you choose Quiet, I step back completely. Anything waiting shows as a number on my icon in the ${p.where}.`,
+    },
+    {
+      title: "You stay anonymous",
+      body: "Check-ins show HR your team, not your name. If HR fixes something you raised, I'll tell you, and HR still won't know it was you.",
+    },
+  ];
+  const s = steps[step];
+  const last = step === steps.length - 1;
+  return (
+    <section aria-labelledby="tour-title" aria-describedby="tour-body" className="flex flex-col gap-3">
+      <Header id="tour-title" color={BLUE} title={s.title} right={`${step + 1} of ${steps.length}`} />
+      <p id="tour-body" aria-live="polite" className="m-0 text-[15px] leading-relaxed [color:var(--ink)]">{s.body}</p>
+      {s.key && (
+        <p className="m-0 self-start rounded-xl [background-color:var(--bg)] border [border-color:var(--line)] px-3 py-1.5 mono text-[14px] [color:var(--ink)]">
+          {s.key}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <Btn variant="primary" data-autofocus className="flex-[2]" onClick={() => (last ? p.onDone() : setStep(step + 1))}>
+          {last ? "Got it" : "Next"}
+        </Btn>
+        {!last && (
+          <Btn className="flex-1" onClick={p.onDone}>
+            Skip tour
+          </Btn>
+        )}
       </div>
     </section>
   );

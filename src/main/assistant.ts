@@ -4,7 +4,7 @@
 // A manager's assistant only gets their own team, without check-in notes or
 // request details, so it can't point at individuals (enforced here, not in the UI).
 // OpenAI when a key is set; a simple offline answerer otherwise.
-import { DRAFT_PLACEHOLDER, REQUEST_CATEGORIES, type AssistantMessage, type HandbookDraft, type AssistantReply, type AssistantView } from "../shared/types";
+import { DRAFT_PLACEHOLDER, GUIDE_SOURCES, guideLabel, REQUEST_CATEGORIES, type GuideSource, type AssistantMessage, type HandbookDraft, type AssistantReply, type AssistantView } from "../shared/types";
 import { store } from "./store";
 import { tokens } from "./ask";
 import { aiJson } from "./openai";
@@ -41,7 +41,7 @@ function snapshot(view: AssistantView) {
       .hrAsks()
       .filter(mine)
       .slice(-MAX_ROWS)
-      .map((a) => ({ team: a.team, question: a.question, answeredByHandbook: a.answered, topic: a.topic, daysAgo: daysAgo(a.createdAt) })),
+      .map((a) => ({ team: a.team, question: a.question, answeredByCompanyGuide: a.answered, topic: a.topic, daysAgo: daysAgo(a.createdAt) })),
     requests: store
       .hrRequests()
       .filter(mine)
@@ -55,7 +55,7 @@ function snapshot(view: AssistantView) {
         daysOpen: daysAgo(r.createdAt),
       })),
     followUps: store.hrActions().filter(mine).map((a) => ({ theme: a.themeTitle, team: a.team, action: a.action, owner: a.owner, status: a.status })),
-    handbookTopics: store.handbook().map((h) => h.title),
+    companyGuide: store.handbook().map((h) => `${h.title} (${guideLabel(h.source)})`),
   };
 }
 
@@ -80,7 +80,7 @@ export async function askAssistant(messages: AssistantMessage[], view: Assistant
 
   try {
     const ai = await aiJson<{ answer: string; suggestions?: string[] }>(`You are the WorkPalz assistant. You help support new hires in their first 90 days.
-You are talking to ${who}. All data is voluntary (check-ins, questions to the handbook, IT/HR requests) and has no names.
+You are talking to ${who}. All data is voluntary (check-ins, questions to the company guide, IT/HR requests) and has no names.
 
 Rules:
 - Answer only from the DATA below. If the data doesn't say, say so plainly.
@@ -120,7 +120,7 @@ function answerOffline(question: string, view: AssistantView, d: Snapshot): Assi
   const lines: string[] = [];
 
   const openRequests = d.requests.filter((r) => inTeam(r) && r.status !== "resolved").sort((a, b) => b.daysOpen - a.daysOpen);
-  const gaps = d.questions.filter((a) => inTeam(a) && !a.answeredByHandbook);
+  const gaps = d.questions.filter((a) => inTeam(a) && !a.answeredByCompanyGuide);
   const themes = d.themes.filter(inTeam);
   const followUps = d.followUps.filter((f) => inTeam(f) && f.status === "open");
 
@@ -128,10 +128,10 @@ function answerOffline(question: string, view: AssistantView, d: Snapshot): Assi
     lines.push(`${openRequests.length} open request${openRequests.length === 1 ? "" : "s"} ${where}.`);
     for (const r of openRequests.slice(0, 4)) lines.push(`- ${r.category} (${r.team}, ${r.goesTo}): open ${r.daysOpen} days.${r.description ? ` "${r.description}"` : ""}`);
     if (openRequests.length) lines.push(hr ? "Oldest first. Update them on the Requests page." : "Oldest first. HR and IT handle the details.");
-  } else if (/question|handbook|gap|faq|answer/.test(q)) {
-    lines.push(`${gaps.length} question${gaps.length === 1 ? "" : "s"} ${where} had no handbook answer.`);
+  } else if (/question|handbook|guide|gap|faq|answer/.test(q)) {
+    lines.push(`${gaps.length} question${gaps.length === 1 ? "" : "s"} ${where} had no answer in the company guide.`);
     for (const a of gaps.slice(0, 4)) lines.push(`- "${a.question}" (${a.team})`);
-    if (gaps.length) lines.push("Adding handbook answers for these would close the gap. See Questions.");
+    if (gaps.length) lines.push("Adding answers to the company guide would close the gap. See Questions.");
   } else if (/follow|action|done|todo|to-do/.test(q)) {
     lines.push(`${followUps.length} open follow-up${followUps.length === 1 ? "" : "s"} ${where}.`);
     for (const f of followUps.slice(0, 4)) lines.push(`- ${f.action} (owner: ${f.owner})`);
@@ -153,12 +153,12 @@ function answerOffline(question: string, view: AssistantView, d: Snapshot): Assi
 
   return {
     answer: lines.join("\n"),
-    suggestions: ["Which requests have waited longest?", "What should we add to the handbook?", "Summarise this week"],
+    suggestions: ["Which requests have waited longest?", "What should we add to the company guide?", "Summarise this week"],
     source: "offline",
   };
 }
 
-// ---------- Handbook drafts for questions the handbook couldn't answer ----------
+// ---------- Drafts for questions the company guide couldn't answer ----------
 // The AI doesn't know this company's real facts, so anything company-specific
 // becomes an "[HR: ...]" placeholder that HR must fill in before publishing.
 
@@ -167,11 +167,13 @@ export async function draftHandbookEntry(questions: string[]): Promise<HandbookD
   const examples = store
     .handbook()
     .slice(0, 3)
-    .map((h) => JSON.stringify({ title: h.title, answer: h.answer }));
+    .map((h) => JSON.stringify({ place: h.source, title: h.title, answer: h.answer }));
 
   try {
-    const ai = await aiJson<{ title: string; answer: string; keywords: string[] }>(`You help HR write a company handbook entry for new hires.
-New hires asked these questions and the handbook had no answer:
+    const ai = await aiJson<{ title: string; answer: string; keywords: string[]; place: GuideSource }>(`You help HR write an entry for the company guide for new hires.
+The company guide has three parts:
+${GUIDE_SOURCES.map((g) => `- "${g.id}" = ${g.label}: ${g.holds}`).join("\n")}
+New hires asked these questions and the company guide had no answer:
 ${qs.map((q) => `- ${JSON.stringify(q)}`).join("\n")}
 
 Write ONE entry that answers them. Rules:
@@ -179,15 +181,17 @@ Write ONE entry that answers them. Rules:
   Wherever a company-specific fact is needed, write a placeholder like "${DRAFT_PLACEHOLDER} who approves this]".
 - 2 to 4 short, friendly sentences in plain English, in the same style as these existing entries:
 ${examples.join("\n")}
-- "title": short and plain, like a handbook heading.
+- "place": where it belongs: "handbook" only for formal HR policy, "it" for systems/access/how-tos, "glossary" for jargon or names.
+- "title": short and plain, like a heading in that part of the guide.
 - "keywords": 4 to 8 short lowercase words or phrases a new hire might type when asking this.
 
-Return JSON only: {"title": string, "answer": string, "keywords": string[]}`);
+Return JSON only: {"title": string, "answer": string, "keywords": string[], "place": "handbook" | "it" | "glossary"}`);
     if (ai?.title && ai.answer) {
       return {
         title: String(ai.title).slice(0, 80),
         answer: String(ai.answer).slice(0, 1000),
         keywords: (ai.keywords ?? []).map((k) => String(k).toLowerCase().slice(0, 40)).slice(0, 8),
+        place: GUIDE_SOURCES.some((g) => g.id === ai.place) ? ai.place : guessPlace(qs),
         source: "openai",
       };
     }
@@ -201,6 +205,15 @@ Return JSON only: {"title": string, "answer": string, "keywords": string[]}`);
     title: (title.charAt(0).toUpperCase() + title.slice(1)).slice(0, 80),
     answer: `${DRAFT_PLACEHOLDER} write the answer here]. If you're still unsure, ask your onboarding buddy.`,
     keywords: Array.from(new Set(qs.flatMap(tokens))).slice(0, 8),
+    place: guessPlace(qs),
     source: "offline",
   };
+}
+
+// Offline guess at where an answer belongs; HR can change it before publishing
+function guessPlace(questions: string[]): GuideSource {
+  const q = questions.join(" ").toLowerCase();
+  if (/access|server|vpn|laptop|install|licen[cs]e|password|wifi|wi-fi|system|account|printer|email/.test(q)) return "it";
+  if (/what (is|does|are)|\bmean|stand for|acronym/.test(q)) return "glossary";
+  return "handbook";
 }

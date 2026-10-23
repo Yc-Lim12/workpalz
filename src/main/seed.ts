@@ -82,6 +82,7 @@ export function seedCheckIns(): CheckIn[] {
       mood,
       note,
       shareName,
+      notifyMe: true,
       createdAt: daysAgo(d),
     };
   });
@@ -95,7 +96,7 @@ const ASKS: A[] = [
   ["e1", 3, "how do I request a software licence", "software-licence"],
   ["e2", 2, "how do I get access to the staging server", null],
   ["e3", 1, "staging server access", null],
-  ["e4", 2, "what does LGTM mean", "lgtm"],
+  ["e4", 2, "what is project aurora", "aurora"],
   ["e4", 1, "vpn setup", "vpn"],
   ["m1", 2, "who approves the campaign budget", null],
   ["m2", 1, "what is the Q4 OKR", "okr"],

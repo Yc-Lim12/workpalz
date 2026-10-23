@@ -1,6 +1,7 @@
-// Ask WorkPalz: jargon buster + quick search, grounded in the company handbook.
-// The AI may only answer from handbook entries, so it can't make up policies.
-import type { AskResult, HandbookEntry } from "../shared/types";
+// Ask WorkPalz: jargon buster + quick search, grounded in the company guide
+// (Employee Handbook, IT Help Centre, Team Glossary). The AI may only answer from
+// those entries, so it can't make up policies, and every answer says where it's from.
+import { guideLabel, type AskResult, type HandbookEntry } from "../shared/types";
 import { store } from "./store";
 import { aiJson } from "./openai";
 
@@ -39,12 +40,12 @@ export function searchHandbook(question: string, limit = 4) {
 
 const MIN_SCORE = 3;
 const NOT_FOUND =
-  "I couldn't find that in the handbook. I've noted it so HR can add an answer. Your onboarding buddy is a good person to ask in the meantime.";
+  "I couldn't find that in the company guide (Employee Handbook, IT Help Centre or Team Glossary). I've noted it so HR can add an answer. Your onboarding buddy is a good person to ask in the meantime.";
 
 const asResult = (entry: HandbookEntry, answer: string, source: AskResult["source"]): AskResult => ({
   answered: true,
   answer,
-  entry: { title: entry.title, link: entry.link, linkLabel: entry.linkLabel },
+  entry: { title: entry.title, from: guideLabel(entry.source), link: entry.link, linkLabel: entry.linkLabel },
   source,
 });
 
@@ -54,12 +55,13 @@ export async function answerQuestion(question: string): Promise<{ result: AskRes
   try {
     const ai = await aiJson<{ answered: boolean; entryId?: string; answer?: string }>(
       `You are "Ask WorkPalz", a helper for new employees at Lumora Tech.
-Answer ONLY using the handbook entries below. If they don't answer the question, reply {"answered": false}.
+Answer ONLY using the company guide entries below. If they don't answer the question, reply {"answered": false}.
+"from" says where each entry lives: the Employee Handbook is formal HR policy, so never soften or change it.
 Keep answers to 1–3 short, friendly sentences in plain English. Explain jargon simply.
 
-Handbook entries:
+Company guide entries:
 ${(hits.length ? hits.map((h) => h.entry) : store.handbook())
-  .map((e) => JSON.stringify({ id: e.id, title: e.title, answer: e.answer }))
+  .map((e) => JSON.stringify({ id: e.id, from: guideLabel(e.source), title: e.title, answer: e.answer }))
   .join("\n")}
 
 Question: ${JSON.stringify(question)}

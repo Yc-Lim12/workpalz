@@ -32,7 +32,7 @@ describe("AI themes (offline analyser)", () => {
     expect(tools.sources.question).toBeGreaterThan(0);
 
     expect(find(a.themes, /priorities/, "Marketing").affected).toBe(2);
-    expect(find(a.themes, /handbook/, "Marketing").affected).toBe(2);
+    expect(find(a.themes, /company guide/, "Marketing").affected).toBe(2);
     expect(a.themes.some((t) => t.team === "Finance")).toBe(false);
   });
 
@@ -44,15 +44,19 @@ describe("AI themes (offline analyser)", () => {
 });
 
 describe("Ask WorkPalz", () => {
-  it("answers jargon and links from the handbook", async () => {
+  it("answers from the company guide and says which part", async () => {
     expect((await answerQuestion("What is a Q4 OKR?")).entryId).toBe("okr");
     expect((await answerQuestion("expense form")).entryId).toBe("expense");
-    expect((await answerQuestion("What does LGTM mean?")).entryId).toBe("lgtm");
+    const aurora = await answerQuestion("What is Project Aurora?");
+    expect(aurora.entryId).toBe("aurora");
+    expect(aurora.result.entry?.from).toBe("Team Glossary");
+    expect((await answerQuestion("vpn setup")).result.entry?.from).toBe("IT Help Centre");
+    expect((await answerQuestion("what is the notice period if I resign")).result.entry?.from).toBe("Employee Handbook");
     expect((await answerQuestion("holiday calendar")).entryId).toBe("holidays");
     expect((await answerQuestion("how do i apply for leave")).entryId).toBe("annual-leave");
   });
 
-  it("admits when the handbook has no answer", async () => {
+  it("admits when the company guide has no answer", async () => {
     const r = await answerQuestion("how do I get staging server access");
     expect(r.result.answered).toBe(false);
     expect((await answerQuestion("who approves the campaign budget")).result.answered).toBe(false);
@@ -134,13 +138,15 @@ describe("HR assistant", () => {
   });
 });
 
-describe("Handbook gaps", () => {
+describe("Company guide gaps", () => {
   it("offline drafts leave company facts as placeholders", async () => {
     const { draftHandbookEntry } = await import("../src/main/assistant");
     const d = await draftHandbookEntry(["how do I get access to the staging server"]);
     expect(d.source).toBe("offline");
     expect(d.answer).toContain("[HR:");
     expect(d.keywords).toContain("staging");
+    expect(d.place).toBe("it"); // server access is IT, not formal HR policy
+    expect((await draftHandbookEntry(["what does BU mean"])).place).toBe("glossary");
   });
 
   it("publishing answers the gap, tells the askers, and Ask WorkPalz finds it", async () => {
@@ -151,6 +157,7 @@ describe("Handbook gaps", () => {
       title: "Staging server access",
       answer: "Request it in the IT portal under Access. Your lead approves it within a day.",
       keywords: ["staging", "staging server"],
+      place: "it",
       askIds: gapIds,
     });
     expect(told).toBe(2);
@@ -159,6 +166,7 @@ describe("Handbook gaps", () => {
     const { result } = await answerQuestion("how do I get on the staging server?");
     expect(result.answered).toBe(true);
     expect(result.entry?.title).toBe("Staging server access");
+    expect(result.entry?.from).toBe("IT Help Centre");
   });
 });
 
@@ -172,10 +180,27 @@ describe("Manager view", () => {
     expect(c.answer).not.toContain("staging server");
   });
 
-  it("impact counts resolved requests and closed handbook gaps", () => {
+  it("impact counts resolved requests and closed company guide gaps", () => {
     const m = store.hrImpact("Marketing");
     expect(m.requestsResolved).toBe(1);
     expect(m.avgDaysToResolve).toBeGreaterThan(0);
     expect(store.hrImpact("Engineering").oldestOpenDays).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe("Anonymous, but you can still hear back", () => {
+  it("only people who ticked 'Tell me' get the update, and HR only sees how many", async () => {
+    const a = await analyse();
+    store.setAnalysis(a);
+    const tools = find(a.themes, /tools/, "Engineering");
+    // e1 changes their mind in their latest check-in: no updates please
+    store.addCheckIn({ employeeId: "e1", team: "Engineering", week: 2, question: "q", mood: "stuck", note: "Still no licence", shareName: false, notifyMe: false });
+    store.addAction(tools.id);
+    const action = store.hrActions()[0];
+    expect(action.peopleToTell).toBe(2); // e2 and e3, not e1
+    expect(JSON.stringify(store.hrActions())).not.toMatch(/"e[0-9]"/); // never who
+    expect(store.setActionStatus(action.id, "done")).toBe(2);
+    expect(store.myNotices("e1")).toHaveLength(0);
+    expect(store.myNotices("e2")[0].title).toBe("Update on something you raised");
   });
 });

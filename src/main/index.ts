@@ -2,8 +2,8 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { Action, AssistantMessage, AssistantView, CheckInInput, HandbookInput, Colleague, IslandEvent, IslandLayout, Ping, PingInput, RequestInput, RequestStatus, Shortcuts } from "../shared/types";
-import { DEFAULT_SHORTCUTS, DRAFT_PLACEHOLDER, REQUEST_CATEGORIES } from "../shared/types";
+import type { Action, AssistantMessage, AssistantView, CheckInInput, HandbookInput, IslandStatus, Colleague, IslandEvent, IslandLayout, Ping, PingInput, RequestInput, RequestStatus, Shortcuts } from "../shared/types";
+import { DEFAULT_SHORTCUTS, DRAFT_PLACEHOLDER, GUIDE_SOURCES, REQUEST_CATEGORIES } from "../shared/types";
 import { loadStore, resetStore, store } from "./store";
 import { analyse } from "./ai";
 import { answerQuestion } from "./ask";
@@ -19,6 +19,8 @@ let tray: Tray | null = null;
 let layout: IslandLayout = { notch: false, topInset: 0 };
 let dialogOpen = false;
 let islandInteractive = false; // true = the see-through island window is catching clicks
+let blurCount = 0; // for the end-to-end test
+let releasedFocusAt = 0;
 
 let currentShortcuts: Shortcuts = { ...DEFAULT_SHORTCUTS };
 
@@ -77,10 +79,16 @@ function createIslandWindow() {
   });
 
   island.setAlwaysOnTop(true, "screen-saver");
-  island.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // Step back for full-screen apps (slides, video calls, films): they get the whole screen.
+  // Anything waiting still shows as a number on the menu bar / tray icon.
+  island.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
   island.setIgnoreMouseEvents(true, { forward: true });
 
   island.on("blur", () => {
+    blurCount++;
+    // Our own "give focus back" (the island just closed) isn't the person clicking away.
+    // That blur can arrive late, after they've reopened the island, so it must not close it.
+    if (Date.now() - releasedFocusAt < 1000) return;
     if (!dialogOpen) sendIsland({ type: "blur" });
   });
 
@@ -96,25 +104,49 @@ function createIslandWindow() {
 // The island can hide itself, and it has no dock or taskbar entry, so this is
 // the always-visible place to bring it back.
 
+let status: IslandStatus = { attention: 0, quietUntil: null };
+let trayIcon: Electron.NativeImage;
+let trayAttentionIcon: Electron.NativeImage;
+
 function createTray() {
   const dir = path.join(__dirname, "../../resources");
-  const icon = nativeImage.createFromPath(path.join(dir, isMac ? "trayTemplate.png" : "tray.png"));
-  if (isMac) icon.setTemplateImage(true); // follows light/dark menu bar
-  tray = new Tray(isMac ? icon : icon.resize({ width: 16, height: 16 }));
-  tray.setToolTip("WorkPalz");
+  if (isMac) {
+    trayIcon = nativeImage.createFromPath(path.join(dir, "trayTemplate.png"));
+    trayIcon.setTemplateImage(true); // follows light/dark menu bar
+  } else {
+    // Windows tray icons can't show a number, so a dot on the icon means "something waiting"
+    trayIcon = nativeImage.createFromPath(path.join(dir, "tray.png")).resize({ width: 16, height: 16 });
+    trayAttentionIcon = nativeImage.createFromPath(path.join(dir, "tray-attention.png")).resize({ width: 16, height: 16 });
+  }
+  tray = new Tray(trayIcon);
+  // Windows: a left click on the tray icon brings the island back straight away
+  tray.on("click", () => { if (!isMac) sendIsland({ type: "show" }); });
+  updateTray();
+}
+
+function updateTray() {
+  if (!tray) return;
+  const { attention, quietUntil } = status;
+  const quietText = quietUntil ? `Quiet until ${new Date(quietUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "";
+  if (isMac) tray.setTitle(attention ? String(attention) : ""); // number next to the menu bar icon
+  else tray.setImage(attention ? trayAttentionIcon : trayIcon);
+  tray.setToolTip(["WorkPalz", attention && `${attention} waiting for you`, quietText].filter(Boolean).join(" · "));
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: "Show WorkPalz", click: () => sendIsland({ type: "show" }) },
+      { label: attention ? `Show WorkPalz (${attention} waiting)` : "Show WorkPalz", click: () => sendIsland({ type: "show" }) },
       { label: "Open menu", click: () => { island?.focus(); sendIsland({ type: "open" }); } },
       { label: "Hide WorkPalz", click: () => sendIsland({ type: "hide" }) },
+      { type: "separator" },
+      quietUntil
+        ? { label: `Turn off Quiet (${quietText.toLowerCase()})`, click: () => sendIsland({ type: "quiet", until: "off" }) }
+        : { label: "Quiet for 1 hour", click: () => sendIsland({ type: "quiet", until: "hour" }) },
+      ...(quietUntil ? [] : [{ label: "Quiet until tomorrow", click: () => sendIsland({ type: "quiet", until: "tomorrow" }) }]),
       { type: "separator" },
       { label: "HR dashboard", click: openHrDashboard },
       { type: "separator" },
       { label: "Quit WorkPalz", role: "quit" },
     ])
   );
-  // Windows: a left click on the tray icon brings the island back straight away
-  tray.on("click", () => { if (!isMac) sendIsland({ type: "show" }); });
 }
 
 // ---------- HR window ----------
@@ -205,8 +237,16 @@ function registerIpc() {
     islandInteractive = !!on;
     island?.setIgnoreMouseEvents(!on, { forward: true });
   });
+  ipcMain.on("island:status", (_e, s: IslandStatus) => {
+    status = { attention: Math.max(0, Number(s?.attention) || 0), quietUntil: s?.quietUntil ? Number(s.quietUntil) : null };
+    updateTray();
+  });
   ipcMain.on("island:focus", () => island?.focus());
-  ipcMain.on("island:release-focus", () => island?.blur());
+  ipcMain.on("island:release-focus", () => {
+    if (!island?.isFocused()) return;
+    releasedFocusAt = Date.now();
+    island.blur();
+  });
   ipcMain.handle("island:layout", () => layout);
   ipcMain.on("open-link", (_e, url: string) => {
     if (/^https:\/\//.test(url)) shell.openExternal(url);
@@ -230,6 +270,7 @@ function registerIpc() {
       mood: input.mood,
       note: String(input.note ?? "").trim().slice(0, 280),
       shareName: !!input.shareName,
+      notifyMe: input.notifyMe !== false,
     });
     broadcastChange();
   });
@@ -317,7 +358,8 @@ function registerIpc() {
       .filter(Boolean)
       .slice(0, 12);
     const askIds = (Array.isArray(input.askIds) ? input.askIds : []).map(String);
-    const notified = store.publishHandbookEntry({ title, answer, keywords, askIds });
+    if (!GUIDE_SOURCES.some((g) => g.id === input.place)) throw new Error("Choose where this belongs");
+    const notified = store.publishHandbookEntry({ title, answer, keywords, place: input.place, askIds });
     broadcastChange();
     return notified;
   });
@@ -371,7 +413,13 @@ app.whenReady().then(() => {
   applyShortcuts();
 
   if (process.env.WORKPALZ_E2E) {
-    (globalThis as Record<string, unknown>).__workpalz = { sendIsland, openHrDashboard, isIslandInteractive: () => islandInteractive };
+    (globalThis as Record<string, unknown>).__workpalz = {
+      sendIsland,
+      openHrDashboard,
+      isIslandInteractive: () => islandInteractive,
+      trayStatus: () => status,
+      blurCount: () => blurCount,
+    };
   }
 });
 
