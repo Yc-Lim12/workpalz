@@ -120,6 +120,16 @@ export type SupportRequest = {
 
 export type RequestInput = { category: RequestCategory; description: string };
 
+// ---------- AI helpers on the island (all from company data) ----------
+
+export type GuideTip = { id: string; title: string; from: string; answer: string; link?: string; linkLabel?: string };
+export type RequestSuggestion = { category: RequestCategory; tip: GuideTip | null; source: "openai" | "offline" };
+export type ColleagueSuggestion = { colleagueId: string; reason: string; source: "openai" | "offline" };
+export type CheckInReply = {
+  tip: GuideTip | null;
+  openRequest: { label: string; dept: "IT" | "HR"; status: RequestStatus; days: number } | null;
+};
+
 // ---------- Themes, actions, notices ----------
 
 export type EvidenceSource = "check-in" | "question" | "request";
@@ -208,6 +218,7 @@ export type HrImpact = {
   peopleTold: number; // new hires who heard "here's what we did"
   handbookAdded: number;
   questionsNowAnswered: number;
+  solvedByGuide: number; // problems fixed by a guide tip instead of a ticket
   checkInRate: { thisWeek: number; lastWeek: number }; // % of new hires
 };
 
@@ -285,9 +296,12 @@ export type WorkPalzApi = {
   // employee
   getMe: () => Promise<Employee>;
   getQuestion: () => Promise<string>;
-  submitCheckIn: (input: CheckInInput) => Promise<void>;
+  submitCheckIn: (input: CheckInInput) => Promise<CheckInReply>;
   ask: (question: string) => Promise<AskResult>;
   submitRequest: (input: RequestInput) => Promise<void>;
+  suggestRequest: (text: string) => Promise<RequestSuggestion>;
+  solvedByGuide: (tipId: string) => Promise<void>; // "That fixed it": no ticket needed
+  suggestColleague: (text: string) => Promise<ColleagueSuggestion | null>;
   listMyRequests: () => Promise<SupportRequest[]>;
   listMyNotices: () => Promise<Notice[]>;
   listColleagues: () => Promise<Colleague[]>;

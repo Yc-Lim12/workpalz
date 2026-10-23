@@ -1,4 +1,4 @@
-export type IslandView = "pill" | "menu" | "checkin" | "ask" | "request" | "notice" | "privacy" | "settings" | "ping" | "away" | "tour";
+export type IslandView = "pill" | "menu" | "checkin" | "ask" | "request" | "notice" | "privacy" | "settings" | "ping" | "away" | "tour" | "thanks";
 
 export const BLUE = "var(--blue)";
 export const AMBER = "var(--amber)";
@@ -18,9 +18,11 @@ export const WIDTH: Record<IslandView, number> = {
   ping: 420,
   away: 360,
   tour: 400,
+  thanks: 420,
 };
 export const NOTCH_PILL_WIDTH = 420; // pill wraps around the MacBook notch
 export const NOTCH_GAP = 210; // hidden middle part behind the notch
+export const ISLAND_MAX_HEIGHT = 620; // the island window is 640 px tall; leave room for the shadow
 // Shrunk (idle) pill: a small dot, still at least 24 px to click (WCAG 2.5.8)
 export const MINI_WIDTH = 56;
 export const MINI_HEIGHT = 24;
@@ -38,6 +40,7 @@ export const RADIUS: Record<IslandView, number> = {
   ping: 30,
   away: 28,
   tour: 30,
+  thanks: 30,
 };
 
 // iPhone-like springy morph

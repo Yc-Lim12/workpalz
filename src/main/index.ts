@@ -3,11 +3,12 @@ import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage,
 import fs from "node:fs";
 import path from "node:path";
 import type { Action, AssistantMessage, AssistantView, CheckInInput, HandbookInput, IslandStatus, Colleague, IslandEvent, IslandLayout, Ping, PingInput, RequestInput, RequestStatus, Shortcuts } from "../shared/types";
-import { DEFAULT_SHORTCUTS, DRAFT_PLACEHOLDER, GUIDE_SOURCES, REQUEST_CATEGORIES } from "../shared/types";
+import { DEFAULT_SHORTCUTS, DRAFT_PLACEHOLDER, GUIDE_SOURCES, NEGATIVE_MOODS, REQUEST_CATEGORIES } from "../shared/types";
 import { loadStore, resetStore, store } from "./store";
 import { analyse } from "./ai";
 import { answerQuestion } from "./ask";
 import { askAssistant, draftHandbookEntry } from "./assistant";
+import { checkInReply, suggestColleague, suggestRequest } from "./helper";
 import { ME_ID, questionForWeek } from "./seed";
 
 const WIN_W = 500;
@@ -260,20 +261,30 @@ function registerIpc() {
   ipcMain.handle("me:get", () => me());
   ipcMain.handle("checkin:question", () => questionForWeek(me().week));
 
-  ipcMain.handle("checkin:add", (_e, input: CheckInInput) => {
+  ipcMain.handle("checkin:add", async (_e, input: CheckInInput) => {
     const m = me();
+    const note = String(input.note ?? "").trim().slice(0, 280);
     store.addCheckIn({
       employeeId: m.id,
       team: m.team,
       week: m.week,
       question: questionForWeek(m.week),
       mood: input.mood,
-      note: String(input.note ?? "").trim().slice(0, 280),
+      note,
       shareName: !!input.shareName,
       notifyMe: input.notifyMe !== false,
     });
     broadcastChange();
+    // Give something back straight away: a guide tip and the status of a related request
+    return checkInReply(m.id, note, NEGATIVE_MOODS.includes(input.mood));
   });
+
+  ipcMain.handle("request:suggest", (_e, text: string) => suggestRequest(String(text ?? "")));
+  ipcMain.handle("request:solved-by-guide", (_e, tipId: string) => {
+    store.addSolvedByGuide(me().team, String(tipId ?? ""));
+    broadcastChange();
+  });
+  ipcMain.handle("ping:suggest", (_e, text: string) => suggestColleague(String(text ?? "")));
 
   ipcMain.handle("ask", async (_e, question: string) => {
     const q = String(question ?? "").trim().slice(0, 200);

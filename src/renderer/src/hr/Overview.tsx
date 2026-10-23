@@ -243,6 +243,11 @@ function Impact({ impact: m }: { impact: HrImpact }) {
       sub: `${m.peopleTold} new hire${m.peopleTold === 1 ? "" : "s"} told what changed`,
     },
     {
+      label: "Fixed without a ticket",
+      value: String(m.solvedByGuide),
+      sub: "Quick request tips that solved the problem",
+    },
+    {
       label: "Company guide gaps closed",
       value: String(m.handbookAdded),
       sub: `${m.questionsNowAnswered} question${m.questionsNowAnswered === 1 ? "" : "s"} now answered`,

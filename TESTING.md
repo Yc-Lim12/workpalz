@@ -5,8 +5,8 @@ WorkPalz has three levels of automated testing, plus a manual check before demo 
 | Level | Command | Time | What it answers |
 |---|---|---|---|
 | 1. Typecheck | `npm run typecheck` | ~5 s | Does the code make sense? |
-| 2. Unit tests | `npm test` | ~1 s | Is the logic right? (17 tests) |
-| 3. End-to-end | `npm run build && npm run test:e2e` | ~1.5 min | Does the real app work? (82 checks) |
+| 2. Unit tests | `npm test` | ~1 s | Is the logic right? (21 tests) |
+| 3. End-to-end | `npm run build && npm run test:e2e` | ~1.5 min | Does the real app work? (93 checks) |
 | 4. Manual demo run | see below | ~5 min | Does it look and feel right? |
 
 ## 1. Typecheck
@@ -23,7 +23,7 @@ TypeScript reads all the code without running it and catches mistakes such as a 
 npm test
 ```
 
-17 tests in [tests/logic.test.ts](tests/logic.test.ts) check the app's logic without opening any window. They always use the offline AI.
+21 tests in [tests/logic.test.ts](tests/logic.test.ts) check the app's logic without opening any window. They always use the offline AI.
 
 | Area | What's checked |
 |---|---|
@@ -35,9 +35,10 @@ npm test
 | Ask AI | Offline answers work and never contain names |
 | Company guide | AI drafts keep `[HR: …]` placeholders and suggest where they belong; publishing tells the people who asked |
 | Manager view | A manager's AI only sees their own team, with no notes or request details |
-| Impact | Resolved requests and closed company guide gaps are counted correctly |
+| Impact | Resolved requests, closed company guide gaps and "fixed without a ticket" are counted correctly |
+| Island AI helpers | Smart request picks the category and a guide answer; "Who can help?" picks the right colleague; a stuck check-in gets a tip and the related request status |
 
-**Pass = "17 passed".**
+**Pass = "21 passed".**
 
 ## 3. End-to-end test
 
@@ -54,12 +55,12 @@ npm run test:e2e
 
 0. First launch: the welcome tour opens by itself, shows the open shortcut and explains anonymity
 1. The pill shows "Wk 2"; the menu has 5 features
-2. Ask WorkPalz: a jargon answer labelled "From the Team Glossary", a link button, and "not in the company guide"
+2. Ask WorkPalz: a jargon answer labelled "From the Team Glossary", a link button, "not in the company guide", then × clears the old answer and shows recent questions; first Esc clears, second closes
 3. The Back button works; clicking into another app closes the island; half-typed text is kept
-4. Quick request → "Request sent"
-5. Check-in prompt → "Tell me if HR acts on this" is ticked → pick "Frustrated" → send
+4. Smart Quick request: "laptop won't connect to the vpn" → VPN guide offered first → "Still need help" → System access already picked; then a hardware problem → "Request sent"
+5. Check-in prompt → "Tell me if HR acts on this" is ticked → pick "Frustrated" → send → "Thanks" with a guide tip
 6. The focus timer counts down in the pill
-7. Ping: search "vpn" → only Ravi from IT shows → send → his reply pops up
+7. Ping: "the staging server won't run" → ✦ Who can help → suggests Ahmad; search "vpn" → only Ravi from IT shows → send → his reply pops up
 8. Idle → the pill shrinks to a dot → hovering brings it back. Quiet for 1 hour → the island steps back; a new check-in doesn't pop up but the tray counts it → turning Quiet off brings it back. Hide for now → the bar appears → clicking it brings the island back
 9. The Privacy screen shows what's stored, pings included
 10. Keyboard: the shortcut opens the menu with focus inside, Tab moves, Esc closes
@@ -80,7 +81,7 @@ npm run test:e2e
 
 ### What you get
 
-- `PASS` or `FAIL` for each check, ending with **"82/82 checks passed"**
+- `PASS` or `FAIL` for each check, ending with **"93/93 checks passed"**
 - A screenshot of every screen in `tests/e2e/shots/` (handy for pitch slides; not committed to git)
 - Full results, including any accessibility problems, in `tests/e2e/shots/results.json`
 

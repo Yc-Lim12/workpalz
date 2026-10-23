@@ -13,9 +13,11 @@ New employees often struggle quietly in their first months: missing tools, uncle
   - **Employee Handbook**: formal HR policy (leave, working hours, probation, code of conduct, notice period)
   - **IT Help Centre**: systems, access and how-tos ("VPN setup", "request a software licence")
   - **Team Glossary**: company jargon and project names ("Q4 OKR", "Project Aurora")
-- **Quick request**: send an IT or HR request in a few clicks and track its status.
-- **Ping a colleague**: search by name or topic ("VPN", "staging server"), see who's available, and ask them for help. Only the colleague sees it, never HR.
-- **Weekly check-in**: one tap plus an optional note. The question changes with the onboarding stage. Anonymous to HR by default, with a choice to hear back if HR acts on it (see below).
+
+  Works like a search box: an × clears the question and the old answer, the first `Esc` clears and the second closes, and **recent questions** are listed to ask again (kept on that computer only; removed by "Delete my data").
+- **Smart Quick request** (AI): describe the problem in your own words. WorkPalz first offers a matching answer from the company guide ("That fixed it" = no ticket needed); if you're still stuck, the category is already picked and you just press Send. Track status afterwards.
+- **Ping a colleague**: search by name or topic ("VPN", "staging server"), or describe the problem and press **✦ Who can help with this?** (AI suggests the right person). See who's available and ask them for help. Only the colleague sees it, never HR.
+- **Weekly check-in**: one tap plus an optional note. The question changes with the onboarding stage. Anonymous to HR by default, with a choice to hear back if HR acts on it (see below). If you say you're stuck, WorkPalz gives something back straight away (AI): a matching guide answer and the status of your related open request.
 - **Focus timer**: 25-minute focus session shown in the pill.
 - **Updates**: the island tells you when HR fixes something you raised, when a question you asked gets an answer in the company guide, or when a colleague replies.
 - **Welcome tour**: on the first day the island opens itself once and shows how to open it, how it stays out of the way and how anonymity works. Replay it from Settings.
@@ -31,7 +33,7 @@ New employees often struggle quietly in their first months: missing tools, uncle
 **For HR (the dashboard)**
 - **AI themes** across check-ins, unanswered questions and open requests, with "X of Y new hires", week-over-week trend, quotes and a suggested action.
 - **One-click follow-ups**; marking one done tells the people who raised it, without revealing who they are.
-- **Impact**: check-in response rate, requests resolved and how fast, oldest open request, follow-ups done, company guide gaps closed.
+- **Impact**: check-in response rate, requests resolved and how fast, oldest open request, follow-ups done, problems **fixed without a ticket**, company guide gaps closed.
 - **Ask AI**: one assistant on every page that knows the whole dashboard. Ask "Which team needs help most?" or "Summarise this week for managers".
 - **Fill gaps in the company guide with AI**: for questions the guide couldn't answer, the AI drafts an entry and suggests where it belongs (formal policy goes in the Employee Handbook, server access in the IT Help Centre, jargon in the Team Glossary); HR can change it. Anything company-specific is left as `[HR: …]`, and publishing stays locked until HR fills it in. Publishing updates Ask WorkPalz straight away and tells everyone who asked.
 - **Manager view**: a team manager sees only their own team, as patterns. No check-in notes, quotes or single requests. Their AI assistant gets the same limited data.
@@ -73,8 +75,8 @@ Without a key, WorkPalz uses its offline analyser, company guide search and simp
 | Command | What it does |
 |---|---|
 | `npm run dev` | Run the app |
-| `npm test` | Run the logic tests (17) |
-| `npm run build && npm run test:e2e` | Drive the real app through every feature, screenshot it and run a WCAG scan on every screen (82 checks) |
+| `npm test` | Run the logic tests (21) |
+| `npm run build && npm run test:e2e` | Drive the real app through every feature, screenshot it and run a WCAG scan on every screen (93 checks) |
 | `npm run typecheck` | TypeScript check |
 | `npm run dist:win` | Build a Windows installer (run on Windows) |
 | `npm run dist:mac` | Build a macOS .dmg |
@@ -117,6 +119,7 @@ src/
 │   ├── ai.ts                theme analysis (OpenAI + offline)
 │   ├── assistant.ts         Ask AI for HR/managers + company guide drafts
 │   ├── ask.ts               grounded Q&A over the company guide
+│   ├── helper.ts            island AI helpers: smart request, who can help, check-in reply
 │   ├── openai.ts            OpenAI client with timeout
 │   ├── handbook.ts          fictional company guide: Employee Handbook, IT Help Centre, Team Glossary
 │   └── seed.ts              fictional demo data: new hires and colleagues

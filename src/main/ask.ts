@@ -38,7 +38,7 @@ export function searchHandbook(question: string, limit = 4) {
     .slice(0, limit);
 }
 
-const MIN_SCORE = 3;
+export const MIN_SCORE = 3;
 const NOT_FOUND =
   "I couldn't find that in the company guide (Employee Handbook, IT Help Centre or Team Glossary). I've noted it so HR can add an answer. Your onboarding buddy is a good person to ask in the meantime.";
 

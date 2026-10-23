@@ -2,7 +2,7 @@
 import { type ReactNode, type RefObject } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { IslandLayout } from "../../../shared/types";
-import { MINI_HEIGHT, MINI_SIDE, MINI_WIDTH, MORPH, NOTCH_GAP, NOTCH_PILL_WIDTH, RADIUS, WIDTH, type IslandView } from "./theme";
+import { ISLAND_MAX_HEIGHT, MINI_HEIGHT, MINI_SIDE, MINI_WIDTH, MORPH, NOTCH_GAP, NOTCH_PILL_WIDTH, RADIUS, WIDTH, type IslandView } from "./theme";
 import { Dot } from "./ui";
 
 export type PillInfo = { label: string; time?: string; color: string; pulse?: boolean; ariaLabel: string };
@@ -59,7 +59,12 @@ export default function Island({ view, mini = false, layout, pill, onPillClick, 
               <PillContent pill={pill} notch={notch} height={notch ? layout.topInset : 40} onClick={onPillClick} />
             )
           ) : (
-            <div ref={contentRef} className="px-5 pb-5 w-full box-border" style={{ paddingTop: notch ? layout.topInset + 10 : 18 }}>
+            // Never taller than the island's window: long views (or zoomed text) scroll instead of being cut off
+            <div
+              ref={contentRef}
+              className="px-5 pb-5 w-full box-border overflow-y-auto"
+              style={{ paddingTop: notch ? layout.topInset + 10 : 18, maxHeight: ISLAND_MAX_HEIGHT - (notch ? 0 : 6) }}
+            >
               {children}
             </div>
           )}

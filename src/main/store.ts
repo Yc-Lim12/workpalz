@@ -47,6 +47,7 @@ type Data = {
   notices: Notice[];
   pings: Ping[];
   handbook: HandbookEntry[]; // entries HR added to fill gaps
+  solvedByGuide: { team: string; tipId: string; at: string }[]; // "That fixed it", no ticket needed
   analysis: InternalAnalysis | null;
 };
 
@@ -72,6 +73,7 @@ function fresh(): Data {
     notices: [],
     pings: [],
     handbook: [],
+    solvedByGuide: [],
     analysis: null,
   };
 }
@@ -89,6 +91,7 @@ export function loadStore() {
     data = parsed.version === 2 ? parsed : fresh();
     data.pings ??= []; // saved before pings existed
     data.handbook ??= [];
+    data.solvedByGuide ??= [];
   } catch {
     data = fresh();
   }
@@ -173,6 +176,11 @@ export const store = {
     }
     save();
     return [...askers.keys()].filter(wantsUpdates).length;
+  },
+
+  addSolvedByGuide(team: string, tipId: string) {
+    data.solvedByGuide.push({ team, tipId, at: now() });
+    save();
   },
 
   colleagues: () => COLLEAGUES,
@@ -282,6 +290,7 @@ export const store = {
       peopleTold: new Set(done.flatMap((a) => a.contributorIds.filter(wantsUpdates))).size,
       handbookAdded: data.handbook.length,
       questionsNowAnswered: data.asks.filter((a) => inTeam(a) && a.entryId?.startsWith("hr-")).length,
+      solvedByGuide: data.solvedByGuide.filter(inTeam).length,
       checkInRate: { thisWeek: rate(inLastWeek), lastWeek: rate(inWeekBefore) },
     };
   },

@@ -204,3 +204,39 @@ describe("Anonymous, but you can still hear back", () => {
     expect(store.myNotices("e2")[0].title).toBe("Update on something you raised");
   });
 });
+
+describe("AI helpers on the island (offline versions)", () => {
+  it("Smart Quick request picks the category and offers a guide answer first", async () => {
+    const { suggestRequest } = await import("../src/main/helper");
+    const vpn = await suggestRequest("my laptop won't connect to the vpn from home");
+    expect(vpn.source).toBe("offline");
+    expect(vpn.tip?.id).toBe("vpn");
+    expect(vpn.tip?.from).toBe("IT Help Centre");
+    expect(vpn.category).toBe("access");
+    expect((await suggestRequest("laptop keyboard keys sticking")).category).toBe("hardware");
+    expect((await suggestRequest("I need a licence for the IDE")).category).toBe("software");
+    expect((await suggestRequest("half day leave on Friday")).category).toBe("leave");
+  });
+
+  it("'Who can help?' suggests the right colleague", async () => {
+    const { suggestColleague } = await import("../src/main/helper");
+    expect((await suggestColleague("I can't get the staging server running"))?.colleagueId).toBe("p1");
+    expect((await suggestColleague("my expense claim was rejected"))?.colleagueId).toBe("p6");
+    expect(await suggestColleague("zzz qqq")).toBeNull();
+  });
+
+  it("a stuck check-in gets a tip and the status of the related open request", async () => {
+    const { checkInReply } = await import("../src/main/helper");
+    const r = await checkInReply("e1", "Still waiting on my IDE licence", true);
+    expect(r.tip?.id).toBe("software-licence");
+    expect(r.openRequest?.dept).toBe("IT");
+    expect(r.openRequest?.days).toBeGreaterThanOrEqual(4);
+    expect(await checkInReply("e1", "Great week", false)).toEqual({ tip: null, openRequest: null });
+  });
+
+  it("'That fixed it' counts as fixed without a ticket", () => {
+    store.addSolvedByGuide("Engineering", "vpn");
+    expect(store.hrImpact("Engineering").solvedByGuide).toBe(1);
+    expect(store.hrImpact("Marketing").solvedByGuide).toBe(0);
+  });
+});

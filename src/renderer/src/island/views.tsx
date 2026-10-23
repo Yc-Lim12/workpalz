@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { MOODS, REQUEST_CATEGORIES, STATUS_LABEL, type AskResult, type Availability, type Colleague, type Ping, type PingInput, type CheckInInput, type Mood, type MyDataSummary, type Notice, type RequestCategory, type RequestInput, type Shortcuts, type SupportRequest, DEFAULT_SHORTCUTS } from "../../../shared/types";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { MOODS, REQUEST_CATEGORIES, STATUS_LABEL, type AskResult, type Availability, type CheckInReply, type Colleague, type ColleagueSuggestion, type GuideTip, type Ping, type PingInput, type RequestSuggestion, type CheckInInput, type Mood, type MyDataSummary, type Notice, type RequestCategory, type RequestInput, type Shortcuts, type SupportRequest, DEFAULT_SHORTCUTS } from "../../../shared/types";
 import { AMBER, BLUE, MUTED } from "./theme";
 import { Btn, Choice, Dot, Header, inputClass } from "./ui";
 
@@ -123,11 +123,34 @@ export function CheckInView(p: { question: string; onSubmit: (i: CheckInInput) =
 // One example from each part of the company guide
 const EXAMPLES = ["What is Project Aurora?", "Medical leave", "VPN setup", "Expense form"];
 
+// Recent questions, like a search engine's history. Kept on this computer only.
+const HISTORY_KEY = "ask-history";
+const HISTORY_MAX = 6;
+const readHistory = (): string[] => {
+  try {
+    const v = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string").slice(0, HISTORY_MAX) : [];
+  } catch {
+    return [];
+  }
+};
+const writeHistory = (h: string[]) => {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(h));
+  } catch {}
+};
+export const clearAskHistory = () => {
+  try {
+    localStorage.removeItem(HISTORY_KEY);
+  } catch {}
+};
+
 export function AskView(p: { onAsk: (q: string) => Promise<AskResult>; onOpenLink: (url: string) => void; onBack: () => void }) {
   const [q, setQ] = useDraft("ask.q", "");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useDraft<AskResult | null>("ask.result", null);
   const [asked, setAsked] = useDraft("ask.asked", "");
+  const [history, setHistory] = useState(readHistory);
 
   const run = async (question: string) => {
     const text = question.trim();
@@ -135,25 +158,103 @@ export function AskView(p: { onAsk: (q: string) => Promise<AskResult>; onOpenLin
     setBusy(true);
     setAsked(text);
     setResult(null);
+    const h = [text, ...history.filter((x) => x.toLowerCase() !== text.toLowerCase())].slice(0, HISTORY_MAX);
+    setHistory(h);
+    writeHistory(h);
     try { setResult(await p.onAsk(text)); } finally { setBusy(false); }
   };
+
+  // Emptying the box goes back to the start: examples and recent questions, no old answer
+  const change = (v: string) => {
+    setQ(v);
+    if (!v.trim()) {
+      setResult(null);
+      setAsked("");
+    }
+  };
+
+  const remove = (text: string) => {
+    const h = history.filter((x) => x !== text);
+    setHistory(h);
+    writeHistory(h);
+  };
+
+  const chip = "min-h-9 cursor-pointer rounded-full [background-color:var(--bg)] px-3 text-[12.5px] [color:var(--ink)] hover:opacity-80 border [border-color:var(--line)]";
 
   return (
     <section aria-labelledby="ask-title" className="flex flex-col gap-3">
       <Header id="ask-title" color={BLUE} title="Ask WorkPalz" right="Answers from the company guide" onBack={p.onBack} />
       <form role="search" className="flex gap-2" onSubmit={(e) => { e.preventDefault(); run(q); }}>
-        <input id="ask-input" data-autofocus value={q} onChange={(e) => setQ(e.target.value)} maxLength={200} placeholder="e.g. What's a Q4 OKR?" className={`${inputClass} min-h-11 flex-1`} />
+        <div className="relative flex-1">
+          <label htmlFor="ask-input" className="sr-only">Your question</label>
+          <input
+            id="ask-input"
+            data-autofocus
+            value={q}
+            onChange={(e) => change(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && q) {
+                e.stopPropagation(); // first Esc clears the box, the next one closes the island
+                change("");
+              }
+            }}
+            maxLength={200}
+            placeholder="e.g. What's a Q4 OKR?"
+            className={`${inputClass} min-h-11 pr-10`}
+          />
+          {q && (
+            <button
+              type="button"
+              aria-label="Clear question"
+              onClick={() => {
+                change("");
+                document.getElementById("ask-input")?.focus();
+              }}
+              className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-[18px] [color:var(--muted)] hover:[background-color:var(--bg)]"
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          )}
+        </div>
         <Btn type="submit" variant="primary" disabled={!q.trim() || busy}>Ask</Btn>
       </form>
 
       {!result && !busy && (
-        <div className="flex flex-wrap gap-1.5">
-          {EXAMPLES.map((ex) => (
-            <button key={ex} type="button" onClick={() => { setQ(ex); run(ex); }} className="min-h-9 cursor-pointer rounded-full [background-color:var(--bg)] px-3 text-[12.5px] [color:var(--ink)] hover:opacity-80 border [border-color:var(--line)]">
-              {ex}
-            </button>
-          ))}
-        </div>
+        <>
+          {history.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <h3 className="m-0 text-[12.5px] font-semibold" style={{ color: MUTED }}>Recent</h3>
+                <button type="button" onClick={() => { setHistory([]); writeHistory([]); }} className="min-h-9 cursor-pointer rounded-lg px-2 text-[12.5px] [color:var(--muted)] hover:[background-color:var(--bg)]">
+                  Clear all
+                </button>
+              </div>
+              <ul aria-label="Recent questions" className="m-0 flex list-none flex-col p-0">
+                {history.map((h) => (
+                  <li key={h} className="flex items-center gap-1">
+                    <button type="button" onClick={() => { setQ(h); run(h); }} className="flex min-h-9 flex-1 cursor-pointer items-center gap-2 truncate rounded-lg px-2 text-left text-[13.5px] [color:var(--ink)] hover:[background-color:var(--bg)]">
+                      <span aria-hidden="true" style={{ color: MUTED }}>↺</span>
+                      <span className="truncate">{h}</span>
+                    </button>
+                    <button type="button" aria-label={`Remove "${h}" from recent`} onClick={() => remove(h)} className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full [color:var(--muted)] hover:[background-color:var(--bg)]">
+                      <span aria-hidden="true">×</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="flex flex-col gap-1.5">
+            <h3 className="m-0 text-[12.5px] font-semibold" style={{ color: MUTED }}>Try</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {EXAMPLES.map((ex) => (
+                <button key={ex} type="button" onClick={() => { setQ(ex); run(ex); }} className={chip}>
+                  {ex}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
       )}
 
       <div aria-live="polite" aria-busy={busy}>
@@ -180,14 +281,57 @@ export function AskView(p: { onAsk: (q: string) => Promise<AskResult>; onOpenLin
   );
 }
 
-export function RequestView(p: { mine: SupportRequest[]; onSubmit: (i: RequestInput) => Promise<void>; onClose: () => void; onBack: () => void; }) {
+// A company guide answer offered before (or instead of) a ticket
+function TipCard({ tip, onOpenLink, children }: { tip: GuideTip; onOpenLink: (url: string) => void; children?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl [background-color:var(--bg)] border [border-color:var(--line)] p-3.5">
+      <p className="m-0 text-[12px] font-semibold" style={{ color: BLUE }}>✦ This might help · {tip.from}</p>
+      <h3 className="m-0 text-[14.5px] font-semibold [color:var(--ink)]">{tip.title}</h3>
+      <p className="m-0 text-[13.5px] leading-relaxed [color:var(--ink)]">{tip.answer}</p>
+      {tip.link && (
+        <Btn variant="secondary" className="self-start !min-h-10" onClick={() => onOpenLink(tip.link!)}>
+          {tip.linkLabel ?? "Open link"} ↗
+        </Btn>
+      )}
+      {children}
+    </div>
+  );
+}
+
+// Smart Quick request: describe it in your own words; the AI picks the category
+// and offers a guide answer first. The category can always be changed.
+export function RequestView(p: {
+  mine: SupportRequest[];
+  onSuggest: (text: string) => Promise<RequestSuggestion>;
+  onSolved: (tipId: string) => Promise<void>;
+  onOpenLink: (url: string) => void;
+  onSubmit: (i: RequestInput) => Promise<void>;
+  onClose: () => void;
+  onBack: () => void;
+}) {
   const [category, setCategory] = useDraft<RequestCategory | null>("rq.cat", null);
   const [desc, setDesc] = useDraft("rq.desc", "");
+  const [suggestion, setSuggestion] = useDraft<RequestSuggestion | null>("rq.sug", null);
+  const [needsTicket, setNeedsTicket] = useDraft("rq.ticket", false); // tried the tip, still stuck
+  const [checking, setChecking] = useState(false);
   const [sending, setSending] = useState(false);
   const recent = p.mine.slice(0, 3);
 
+  const next = async () => {
+    if (!desc.trim() || checking) return;
+    setChecking(true);
+    try {
+      const s = await p.onSuggest(desc.trim());
+      setSuggestion(s);
+      setCategory(s.category);
+    } finally {
+      setChecking(false);
+    }
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!suggestion) return next();
     if (!category || !desc.trim() || sending) return;
     setSending(true);
     await p.onSubmit({ category, description: desc.trim() });
@@ -197,28 +341,78 @@ export function RequestView(p: { mine: SupportRequest[]; onSubmit: (i: RequestIn
   return (
     <form onSubmit={submit} aria-labelledby="rq-title" className="flex flex-col gap-3">
       <Header id="rq-title" color={BLUE} title="Quick request" right="Goes to IT or HR" onBack={p.onBack} />
-      <fieldset className="m-0 border-0 p-0">
-        <legend className="mb-2 p-0 text-[15px] font-semibold [color:var(--ink)]">What do you need help with?</legend>
-        <div className="grid grid-cols-3 gap-1.5">
-          {REQUEST_CATEGORIES.map((c) => (
-            <Choice key={c.id} type="radio" name="category" checked={category === c.id} onChange={() => setCategory(c.id)} activeBg="var(--blue)" className="min-h-12 px-2 text-[12.5px] leading-tight [background-color:var(--bg)] [color:var(--ink)]">
-              {c.label}
-            </Choice>
-          ))}
-        </div>
-      </fieldset>
-
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="rq-desc" className="text-[13px] font-semibold [color:var(--ink)]">Details</label>
-        <textarea id="rq-desc" value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={280} rows={2} placeholder="e.g. IDE licence for the payments project" className={`${inputClass} resize-none py-2.5 leading-snug`} />
+        <label htmlFor="rq-desc" className="text-[15px] font-semibold [color:var(--ink)]">What's the problem?</label>
+        <textarea
+          id="rq-desc"
+          data-autofocus
+          value={desc}
+          onChange={(e) => {
+            setDesc(e.target.value);
+            if (suggestion) {
+              setSuggestion(null); // changed the problem: check again
+              setNeedsTicket(false);
+            }
+          }}
+          maxLength={280}
+          rows={2}
+          placeholder="In your own words, e.g. my laptop won't connect to the VPN"
+          className={`${inputClass} resize-none py-2.5 leading-snug`}
+        />
       </div>
 
-      <div className="flex gap-2 mt-2">
-        <Btn type="submit" variant="primary" className="flex-[2]" disabled={!category || !desc.trim() || sending}>{sending ? "Sending…" : "Send request"}</Btn>
-        <Btn className="flex-1" onClick={p.onClose}>Cancel</Btn>
-      </div>
+      {!suggestion ? (
+        <div className="flex gap-2">
+          <Btn type="submit" variant="primary" className="flex-[2]" disabled={!desc.trim() || checking}>{checking ? "Checking…" : "Next"}</Btn>
+          <Btn className="flex-1" onClick={p.onClose}>Cancel</Btn>
+        </div>
+      ) : (
+        <>
+          {/* One step at a time: first the guide answer, then (only if still stuck) the request */}
+          {suggestion.tip && !needsTicket ? (
+            <>
+              <TipCard tip={suggestion.tip} onOpenLink={p.onOpenLink} />
+              <div className="flex gap-2">
+                <Btn
+                  variant="primary"
+                  className="flex-1"
+                  onClick={async () => {
+                    await p.onSolved(suggestion.tip!.id);
+                    clearDrafts("rq.");
+                  }}
+                >
+                  That fixed it
+                </Btn>
+                <Btn className="flex-1" onClick={() => setNeedsTicket(true)}>Still need help</Btn>
+              </div>
+            </>
+          ) : (
+          <>
+          {suggestion.tip && (
+            <p className="m-0 text-[12.5px]" style={{ color: MUTED }}>Tried: {suggestion.tip.title} ({suggestion.tip.from})</p>
+          )}
+          <fieldset className="m-0 border-0 p-0">
+            <legend className="mb-2 p-0 text-[13px] font-semibold [color:var(--ink)]">
+              Still need help? It goes to: <span style={{ color: MUTED }}>(picked for you, change if wrong)</span>
+            </legend>
+            <div className="grid grid-cols-3 gap-1.5">
+              {REQUEST_CATEGORIES.map((c) => (
+                <Choice key={c.id} type="radio" name="category" checked={category === c.id} onChange={() => setCategory(c.id)} activeBg="var(--blue)" className="min-h-12 px-2 text-[12.5px] leading-tight [background-color:var(--bg)] [color:var(--ink)]">
+                  {c.label}
+                </Choice>
+              ))}
+            </div>
+          </fieldset>
+          <div className="flex gap-2">
+            <Btn type="submit" variant="primary" className="flex-[2]" disabled={!category || !desc.trim() || sending}>{sending ? "Sending…" : "Send request"}</Btn>
+            <Btn className="flex-1" onClick={p.onClose}>Cancel</Btn>
+          </div>
+          </>
+          )}
+        </>
+      )}
 
-      {recent.length > 0 && (
+      {recent.length > 0 && !suggestion && (
         <div className="flex flex-col gap-1.5 border-t [border-color:var(--line)] pt-3 mt-1">
           <h3 className="m-0 text-[12.5px] font-semibold" style={{ color: MUTED }}>Your requests</h3>
           <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
@@ -328,8 +522,17 @@ const QUICK_MESSAGES = ["Got 5 minutes to help me?", "Can you look at something 
 const initials = (name: string) => name.split(" ").map((w) => w[0]).slice(0, 2).join("");
 const firstName = (name: string) => name.split(" ")[0];
 
-export function PingView(p: { colleagues: Colleague[]; mine: Ping[]; onSubmit: (i: PingInput) => Promise<void>; onBack: () => void }) {
+export function PingView(p: {
+  colleagues: Colleague[];
+  mine: Ping[];
+  onSuggest: (text: string) => Promise<ColleagueSuggestion | null>;
+  onSubmit: (i: PingInput) => Promise<void>;
+  onBack: () => void;
+}) {
   const [q, setQ] = useDraft("ping.q", "");
+  // "Who can help?": undefined = not asked yet, null = nobody fits
+  const [suggested, setSuggested] = useState<ColleagueSuggestion | null | undefined>(undefined);
+  const [finding, setFinding] = useState(false);
   const [pickedId, setPickedId] = useDraft<string | null>("ping.who", null);
   const [message, setMessage] = useDraft("ping.msg", "");
   const [sending, setSending] = useState(false);
@@ -381,8 +584,54 @@ export function PingView(p: { colleagues: Colleague[]; mine: Ping[]; onSubmit: (
       <Header id="ping-title" color={BLUE} title="Ping a colleague" right="Only they see it" onBack={p.onBack} />
       <form role="search" onSubmit={(e) => e.preventDefault()}>
         <label htmlFor="ping-search" className="sr-only">Search by name or topic</label>
-        <input id="ping-search" data-autofocus value={q} onChange={(e) => setQ(e.target.value)} maxLength={60} placeholder="Name or topic, e.g. VPN, staging server" className={`${inputClass} min-h-11`} />
+        <input
+          id="ping-search"
+          data-autofocus
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setSuggested(undefined);
+          }}
+          maxLength={120}
+          placeholder="Name, topic, or describe the problem"
+          className={`${inputClass} min-h-11`}
+        />
       </form>
+
+      {/* Describe a problem in a few words and the AI suggests who to ask */}
+      {q.trim().split(/\s+/).length >= 2 && suggested === undefined && (
+        <Btn
+          variant="secondary"
+          className="self-start !min-h-10 text-[13px]"
+          disabled={finding}
+          onClick={async () => {
+            setFinding(true);
+            try {
+              setSuggested(await p.onSuggest(q.trim()));
+            } finally {
+              setFinding(false);
+            }
+          }}
+        >
+          {finding ? "Finding…" : "✦ Who can help with this?"}
+        </Btn>
+      )}
+      <div aria-live="polite">
+        {suggested === null && (
+          <p className="m-0 text-[13px]" style={{ color: MUTED }}>No one obvious for that. Try a Quick request, or ask your buddy.</p>
+        )}
+        {suggested && (() => {
+          const c = p.colleagues.find((x) => x.id === suggested.colleagueId);
+          return c ? (
+            <div className="flex flex-col gap-1.5">
+              <p className="m-0 text-[12px] font-semibold" style={{ color: BLUE }}>✦ Suggested: {c.name}. {suggested.reason}</p>
+              <button type="button" onClick={() => setPickedId(c.id)} className="w-full cursor-pointer rounded-2xl text-left transition hover:opacity-80 active:scale-[0.98]" style={{ outline: "2px solid var(--blue)", outlineOffset: 1 }}>
+                <PersonRow c={c} />
+              </button>
+            </div>
+          ) : null;
+        })()}
+      </div>
 
       <ul aria-label="Colleagues" className="m-0 flex max-h-[250px] list-none flex-col gap-1.5 overflow-y-auto p-0 pr-1">
         {matches.map((c) => (
@@ -394,7 +643,9 @@ export function PingView(p: { colleagues: Colleague[]; mine: Ping[]; onSubmit: (
         ))}
       </ul>
       {matches.length === 0 && (
-        <p className="m-0 text-[13px]" style={{ color: MUTED }}>No one found for "{q.trim()}". Try Ask WorkPalz or a Quick request.</p>
+        <p className="m-0 text-[13px]" style={{ color: MUTED }}>
+          No name or topic matches "{q.trim()}".{suggested === undefined ? " Ask the AI who can help, above." : ""}
+        </p>
       )}
 
       {recent.length > 0 && (
@@ -643,6 +894,25 @@ export function TourView(p: { name: string; shortcut: string; where: string; onD
           </Btn>
         )}
       </div>
+    </section>
+  );
+}
+
+// ---------- After a check-in: give something back ----------
+
+export function CheckInThanksView(p: { reply: CheckInReply; onOpenLink: (url: string) => void; onDone: () => void }) {
+  const r = p.reply.openRequest;
+  return (
+    <section aria-labelledby="thanks-title" className="flex flex-col gap-3">
+      <Header id="thanks-title" color={AMBER} title="Thanks, check-in sent" />
+      {r && (
+        <p className="m-0 rounded-2xl [background-color:var(--bg)] border [border-color:var(--line)] p-3.5 text-[13.5px] leading-relaxed [color:var(--ink)]">
+          Your <strong>{r.label.toLowerCase()}</strong> request is with {r.dept}: {STATUS_LABEL[r.status].toLowerCase()},{" "}
+          {r.days === 0 ? "sent today" : `${r.days} day${r.days === 1 ? "" : "s"} so far`}. You'll hear here when it changes.
+        </p>
+      )}
+      {p.reply.tip && <TipCard tip={p.reply.tip} onOpenLink={p.onOpenLink} />}
+      <Btn variant="primary" data-autofocus onClick={p.onDone}>Got it</Btn>
     </section>
   );
 }

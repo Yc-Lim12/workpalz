@@ -13,12 +13,13 @@ function config() {
 
 export const aiEnabled = () => !!config().key;
 
-export async function aiJson<T>(prompt: string): Promise<T | null> {
+// timeoutMs: short for things people wait on in the island, longer for HR analysis
+export async function aiJson<T>(prompt: string, timeoutMs = TIMEOUT_MS): Promise<T | null> {
   const { key, model } = config();
   if (!key) return null;
 
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",

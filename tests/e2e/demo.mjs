@@ -114,6 +114,15 @@ await island.getByText(/couldn't find that in the company guide/).waitFor();
 await shot(island, "ask-not-found");
 check("Ask admits when the company guide has no answer", true);
 
+// Clearing the question goes back to the start, with recent questions like a search engine
+await island.getByRole("button", { name: "Clear question" }).click();
+await settle(200);
+const cleared = await island.locator(".island-shell").innerText();
+check("Clearing the question removes the old answer", !cleared.includes("couldn't find that"));
+check("Recent questions are listed", (await island.getByRole("list", { name: "Recent questions" }).locator("li").count()) >= 2);
+await shot(island, "ask-recent");
+await axe(island, "island ask (recent)");
+
 // Back button returns to the menu
 await island.getByRole("button", { name: "Back to menu" }).click();
 await settle();
@@ -130,17 +139,29 @@ await openMenu();
 await island.getByRole("button", { name: /Ask WorkPalz/ }).click();
 await settle();
 check("Typed text is kept after click-away", (await island.locator("#ask-input").inputValue()) === "half-typed question");
-await island.keyboard.press("Escape");
+await island.keyboard.press("Escape"); // clears the question
+await island.keyboard.press("Escape"); // closes the island
 await settle();
 
 // Quick request
 await openMenu();
 await island.getByRole("button", { name: /Quick request/ }).click();
 await settle();
-await island.getByText("Laptop or hardware").click();
+await island.locator("#rq-desc").fill("my laptop won't connect to the vpn");
+await island.getByRole("button", { name: "Next" }).click();
+await island.getByText(/This might help/).waitFor();
+check("Smart request offers a guide answer first", (await island.locator(".island-shell").innerText()).includes("VPN setup"));
+await shot(island, "request-smart");
+await axe(island, "island smart request");
+await island.getByRole("button", { name: "Still need help" }).click();
+check("Still stuck: the category is already picked", await island.getByRole("radio", { name: "System access" }).isChecked());
 await island.locator("#rq-desc").fill("Laptop keyboard keys sticking");
+await island.getByRole("button", { name: "Next" }).click();
+await island.getByRole("button", { name: /Still need help|Send request/ }).first().waitFor();
+if (await island.getByRole("button", { name: "Still need help" }).count()) await island.getByRole("button", { name: "Still need help" }).click();
+await island.getByRole("radio", { name: "Laptop or hardware" }).waitFor();
+check("Changing the problem checks again: hardware", await island.getByRole("radio", { name: "Laptop or hardware" }).isChecked());
 await shot(island, "request-form");
-await axe(island, "island request");
 await island.getByRole("button", { name: "Send request" }).click();
 await settle(400);
 await shot(island, "request-sent");
@@ -161,9 +182,13 @@ check("Check-in offers 'Tell me if HR acts on this', ticked by default", await i
 await shot(island, "checkin-form");
 await axe(island, "island check-in");
 await island.getByRole("button", { name: "Send", exact: true }).click();
-await settle(400);
+await island.getByText("Thanks, check-in sent").first().waitFor();
+await settle(300);
 await shot(island, "checkin-sent");
-await island.waitForTimeout(3200);
+check("A stuck check-in gets something useful back", (await island.locator(".island-shell").innerText()).includes("This might help"));
+await axe(island, "island check-in thanks");
+await island.getByRole("button", { name: "Got it" }).click();
+await settle();
 
 // Focus timer
 await openMenu();
@@ -182,6 +207,12 @@ await island.getByRole("button", { name: /Ping a colleague/ }).click();
 await settle();
 await shot(island, "ping-search");
 await axe(island, "island ping (search)");
+await island.locator("#ping-search").fill("the staging server won't run");
+await island.getByRole("button", { name: /Who can help with this/ }).click();
+await island.getByText(/Suggested: Ahmad Zaki/).waitFor();
+check("'Who can help?' suggests the right colleague", true);
+await shot(island, "ping-who-can-help");
+await axe(island, "island ping (who can help)");
 await island.locator("#ping-search").fill("vpn");
 await settle(200);
 check("Ping search by topic finds IT", (await island.locator("ul[aria-label=Colleagues] li").count()) === 1);
@@ -303,7 +334,9 @@ const blursBefore = await hook("blurCount");
 await island.mouse.move(5, 600);
 await settle(1200);
 check("Mouse drifting off the island doesn't close it", (await hook("blurCount")) === blursBefore && (await island.locator("#ask-input").count()) === 1, `blurs: ${blursBefore} → ${await hook("blurCount")}`);
-await island.keyboard.press("Escape");
+await island.keyboard.press("Escape"); // first Esc clears the question
+check("First Esc clears the question, the island stays open", (await island.locator("#ask-input").inputValue()) === "");
+await island.keyboard.press("Escape"); // second Esc closes
 await settle(1000);
 
 // ---------- HR dashboard ----------

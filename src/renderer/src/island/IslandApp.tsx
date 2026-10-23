@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import Island, { type PillInfo } from "./Island";
 import { AMBER, BLUE, type IslandView } from "./theme";
-import { AskView, CheckInView, MenuView, NoticeView, PingView, PrivacyView, RequestView, SettingsView, StepBackView, TourView, displayShortcut, isMac, loadShortcuts } from "./views";
-import type { Colleague, Employee, IslandLayout, Notice, Ping, SupportRequest } from "../../../shared/types";
+import { AskView, CheckInThanksView, CheckInView, clearAskHistory, MenuView, NoticeView, PingView, PrivacyView, RequestView, SettingsView, StepBackView, TourView, displayShortcut, isMac, loadShortcuts } from "./views";
+import type { CheckInReply, Colleague, Employee, IslandLayout, Notice, Ping, SupportRequest } from "../../../shared/types";
 
 const api = window.workpalz;
 const FOCUS_MS = 25 * 60 * 1000;
@@ -45,6 +45,7 @@ export default function IslandApp() {
   const [announce, setAnnounce] = useState("");
   const [hidden, setHidden] = useState(false);
   const [mini, setMini] = useState(false);
+  const [checkInReply, setCheckInReply] = useState<CheckInReply | null>(null);
   // Quiet (do not disturb): nothing pops up; anything waiting shows as a number by the clock
   const [quietUntil, setQuietUntil] = useState<number | null>(readQuiet);
   const [lastActive, setLastActive] = useState(Date.now());
@@ -442,10 +443,15 @@ export default function IslandApp() {
                 onClose={collapse}
                 onBack={() => open("menu")}
                 onSubmit={async (input) => {
-                  await api.submitCheckIn(input);
+                  const reply = await api.submitCheckIn(input);
                   setPending(false);
-                  collapse();
-                  showFlash("Thanks, check-in sent");
+                  if (reply.tip || reply.openRequest) {
+                    setCheckInReply(reply); // something useful to give back
+                    open("thanks", false);
+                  } else {
+                    collapse();
+                    showFlash("Thanks, check-in sent");
+                  }
                 }}
               />
             )}
@@ -453,6 +459,13 @@ export default function IslandApp() {
             {view === "request" && (
               <RequestView
                 mine={requests}
+                onSuggest={api.suggestRequest}
+                onOpenLink={api.openLink}
+                onSolved={async (tipId) => {
+                  await api.solvedByGuide(tipId);
+                  collapse();
+                  showFlash("Glad it's sorted");
+                }}
                 onClose={collapse}
                 onBack={() => open("menu")}
                 onSubmit={async (input) => {
@@ -465,6 +478,7 @@ export default function IslandApp() {
             {view === "ping" && (
             <PingView
               colleagues={colleagues}
+              onSuggest={api.suggestColleague}
               mine={pings}
               onBack={() => open("menu")}
               onSubmit={async (input) => {
@@ -487,10 +501,21 @@ export default function IslandApp() {
             )}
             {view === "notice" && !unread[0] && <EmptyCollapse onCollapse={collapse} />}
             {view === "privacy" && (
-              <PrivacyView getData={api.getMyData} onExport={api.exportMyData} onDelete={api.deleteMyData} onBack={() => open("menu")} />
+              <PrivacyView
+                getData={api.getMyData}
+                onExport={api.exportMyData}
+                onDelete={async () => {
+                  await api.deleteMyData();
+                  clearAskHistory(); // recent questions live on this computer: delete them too
+                }}
+                onBack={() => open("menu")}
+              />
             )}
             {view === "settings" && (
               <SettingsView onBack={() => open("menu")} onReplayTour={() => open("tour")} />
+            )}
+            {view === "thanks" && checkInReply && (
+              <CheckInThanksView reply={checkInReply} onOpenLink={api.openLink} onDone={collapse} />
             )}
             {view === "away" && (
               <StepBackView
