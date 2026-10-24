@@ -66,7 +66,8 @@ export default function Assistant({ view }: { view: AssistantView }) {
         onClick={() => (open ? close() : setOpen(true))}
         aria-expanded={open}
         aria-controls="hr-assistant"
-        className="fixed bottom-6 right-6 z-40 flex min-h-12 cursor-pointer items-center gap-2 rounded-full bg-[color:var(--hr-inverse)] px-5 text-[14px] font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.25)] transition hover:bg-[color:var(--hr-inverse-hover)] active:scale-[0.97]"
+        // Lives in the header with the other controls, so it never covers the page
+        className="flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-[color:var(--hr-inverse)] px-3 text-[13px] font-semibold text-white transition hover:bg-[color:var(--hr-inverse-hover)] active:scale-[0.97]"
       >
         <span aria-hidden="true" className="text-[#8AB3FF]">✦</span>
         {open ? "Close AI" : "Ask AI"}
@@ -78,7 +79,7 @@ export default function Assistant({ view }: { view: AssistantView }) {
           role="dialog"
           aria-label="WorkPalz AI assistant"
           onKeyDown={(e) => e.key === "Escape" && close()}
-          className="fixed bottom-24 right-6 top-20 z-40 flex w-[min(420px,calc(100vw-48px))] flex-col overflow-hidden rounded-2xl border border-[color:var(--hr-border)] bg-[color:var(--hr-surface)] shadow-[0_16px_48px_rgba(0,0,0,0.18)]"
+          className="fixed bottom-6 right-6 top-[72px] z-40 flex w-[min(420px,calc(100vw-48px))] flex-col overflow-hidden rounded-2xl border border-[color:var(--hr-border)] bg-[color:var(--hr-surface)] shadow-[0_16px_48px_rgba(0,0,0,0.18)]"
         >
           <header className="flex items-center gap-2 border-b border-[color:var(--hr-line)] px-4 py-3">
             <span aria-hidden="true" className="text-[color:var(--hr-blue)]">✦</span>

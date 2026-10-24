@@ -207,7 +207,7 @@ await settle();
 await openMenu();
 check("After checking in, the menu says 'Done this week'", (await island.locator(".island-shell").innerText()).includes("Done this week"));
 await island.keyboard.press("Escape");
-await settle(1000);
+await settle(1500); // Esc hands focus back to the OS; let that settle before the next click
 
 // Focus timer
 await openMenu();

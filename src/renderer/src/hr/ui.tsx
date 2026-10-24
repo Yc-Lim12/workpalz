@@ -1,5 +1,5 @@
 // Shared bits for the HR dashboard. Colours are theme variables (index.css), WCAG AA in light and dark.
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 
 export const C = {
   text: "var(--hr-text)",
@@ -21,8 +21,21 @@ export function ago(iso: string) {
   return d === 1 ? "yesterday" : `${d} days ago`;
 }
 
-export function Card({ children, className = "", as: Tag = "div" }: { children: ReactNode; className?: string; as?: "div" | "section" | "article" }) {
-  return <Tag className={`rounded-2xl bg-[color:var(--hr-surface)] p-5 ${className}`}>{children}</Tag>;
+// One card style everywhere: surface, hairline border, a soft shadow, the same padding
+export function Card({
+  children,
+  className = "",
+  as: Tag = "div",
+  ...rest
+}: { children: ReactNode; className?: string; as?: "div" | "section" | "article" } & HTMLAttributes<HTMLElement>) {
+  return (
+    <Tag
+      {...rest}
+      className={`rounded-2xl border border-[color:var(--hr-line)] bg-[color:var(--hr-surface)] p-4 shadow-[0_1px_2px_rgba(16,24,40,0.05)] ${className}`}
+    >
+      {children}
+    </Tag>
+  );
 }
 
 export function Chip({ children, bg, fg }: { children: ReactNode; bg: string; fg: string }) {

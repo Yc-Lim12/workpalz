@@ -158,32 +158,37 @@ export default function HrDashboard() {
         Skip to content
       </a>
 
-      <header className="border-b border-[color:var(--hr-line)] bg-[color:var(--hr-surface)]">
-        <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-x-6 gap-y-3 px-6 py-3">
-          <div className="flex items-center gap-2.5">
+      {/* One compact row that stays visible: where you are (tabs) and whose view (View as / Team) */}
+      <header className="sticky top-0 z-30 border-b border-[color:var(--hr-line)] bg-[color:var(--hr-surface)]">
+        <div className="mx-auto flex max-w-[1320px] flex-wrap items-center gap-x-4 gap-y-2 px-6 py-2.5">
+          <div className="flex items-center gap-2">
             <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-[9px] bg-[color:var(--hr-inverse)]">
               <span className="h-2 w-2 rounded-full bg-[#4C8DFF]" />
             </span>
-            <span className="text-[18px] font-bold">WorkPalz</span>
-            <span className="rounded-full bg-[color:var(--hr-chip)] px-2.5 py-0.5 text-[12px] font-semibold text-[color:var(--hr-text3)]">
+            <span className="text-[16px] font-bold">WorkPalz</span>
+            <span className="rounded-full bg-[color:var(--hr-chip)] px-2 py-0.5 text-[11.5px] font-semibold text-[color:var(--hr-text3)]">
               {managerTeam ? "Manager" : "HR"}
             </span>
           </div>
 
-          <nav aria-label="Dashboard sections" className="order-3 w-full sm:order-none sm:w-auto">
-            <ul className="m-0 flex list-none flex-wrap gap-1 p-0">
+          <nav aria-label="Dashboard sections" className="order-3 w-full lg:order-none lg:w-auto">
+            <ul className="m-0 flex list-none flex-wrap gap-0.5 rounded-xl bg-[color:var(--hr-bg)] p-1">
               {NAV.map((n) => (
                 <li key={n.id}>
                   <button
                     type="button"
                     aria-current={tab === n.id ? "page" : undefined}
                     onClick={() => setTab(n.id)}
-                    className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-3 text-[14px] font-semibold"
-                    style={{ background: tab === n.id ? "var(--hr-blue-soft)" : "transparent", color: tab === n.id ? C.blueText : "var(--hr-text3)" }}
+                    className="flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-[13.5px] font-semibold transition"
+                    style={{
+                      background: tab === n.id ? "var(--hr-surface)" : "transparent",
+                      color: tab === n.id ? C.blueText : "var(--hr-text3)",
+                      boxShadow: tab === n.id ? "0 1px 2px rgba(16,24,40,0.08)" : undefined,
+                    }}
                   >
                     {n.label}
                     {!!n.badge && (
-                      <span className="rounded-full bg-[color:var(--hr-amber-bg)] px-1.5 text-[12px] text-[color:var(--hr-amber-fg)]">
+                      <span className="rounded-full bg-[color:var(--hr-amber-bg)] px-1.5 text-[11.5px] text-[color:var(--hr-amber-fg)]">
                         {n.badge}
                         <span className="sr-only"> open</span>
                       </span>
@@ -194,59 +199,59 @@ export default function HrDashboard() {
             </ul>
           </nav>
 
-          <div className="ml-auto flex items-center gap-2">
-            <label htmlFor="view-as" className="text-[13px]" style={{ color: C.muted }}>
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            {/* key: a new chat when switching between HR and a manager, so nothing carries over */}
+            <Assistant key={viewAs} view={{ tab, team, role: managerTeam ? "manager" : "hr" }} />
+            <label className="flex items-center gap-1.5 text-[12.5px]" style={{ color: C.muted }}>
               View as
+              <select
+                id="view-as"
+                value={viewAs}
+                onChange={(e) => changeViewAs(e.target.value)}
+                className="min-h-9 rounded-lg border border-[color:var(--hr-input-border)] bg-[color:var(--hr-surface)] px-2.5 text-[13px] text-[color:var(--hr-text)]"
+              >
+                <option value="hr">HR</option>
+                {teams.map((t) => (
+                  <option key={t} value={`manager:${t}`}>
+                    {t} manager
+                  </option>
+                ))}
+              </select>
             </label>
-            <select
-              id="view-as"
-              value={viewAs}
-              onChange={(e) => changeViewAs(e.target.value)}
-              className="min-h-11 rounded-lg border border-[color:var(--hr-input-border)] bg-[color:var(--hr-surface)] px-3 text-[14px]"
-            >
-              <option value="hr">HR</option>
-              {teams.map((t) => (
-                <option key={t} value={`manager:${t}`}>
-                  {t} manager
-                </option>
-              ))}
-            </select>
             {!managerTeam && (
-              <>
-            <label htmlFor="team" className="text-[13px]" style={{ color: C.muted }}>
-              Team
-            </label>
-            <select
-              id="team"
-              value={teamFilter}
-              onChange={(e) => setTeam(e.target.value)}
-              className="min-h-11 rounded-lg border border-[color:var(--hr-input-border)] bg-[color:var(--hr-surface)] px-3 text-[14px]"
-            >
-              {["All", ...teams].map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-              </>
+              <label className="flex items-center gap-1.5 text-[12.5px]" style={{ color: C.muted }}>
+                Team
+                <select
+                  id="team"
+                  value={teamFilter}
+                  onChange={(e) => setTeam(e.target.value)}
+                  className="min-h-9 rounded-lg border border-[color:var(--hr-input-border)] bg-[color:var(--hr-surface)] px-2.5 text-[13px] text-[color:var(--hr-text)]"
+                >
+                  {["All", ...teams].map((t) => (
+                    <option key={t}>{t}</option>
+                  ))}
+                </select>
+              </label>
             )}
             <Button
               variant="ghost"
               aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
               title={theme === "dark" ? "Light mode" : "Dark mode"}
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="!px-3"
+              className="!min-h-9 !px-2.5"
             >
               <span aria-hidden="true">{theme === "dark" ? "☀" : "☾"}</span>
             </Button>
-            <Button variant="ghost" onClick={() => api.resetDemo().then(() => say("Demo data reset"))}>
+            <Button variant="ghost" className="!min-h-9 !px-2 text-[13px]" title="Put the demo data back to the start" onClick={() => api.resetDemo().then(() => say("Demo data reset"))}>
               Reset demo
             </Button>
           </div>
         </div>
       </header>
 
-      <main id="main" ref={mainRef} tabIndex={-1} className="mx-auto max-w-[1240px] px-6 pb-28 pt-7 outline-none">
+      <main id="main" ref={mainRef} tabIndex={-1} className="mx-auto max-w-[1320px] px-6 pb-12 pt-6 outline-none">
         {managerTeam && (
-          <p className="m-0 mb-6 rounded-xl bg-[color:var(--hr-blue-soft)] px-4 py-3 text-[14px]" style={{ color: C.blueText }}>
+          <p className="m-0 mb-5 rounded-xl bg-[color:var(--hr-blue-soft)] px-4 py-2.5 text-[13.5px]" style={{ color: C.blueText }}>
             <strong>Manager view for {managerTeam}.</strong> You see patterns for your team, never individuals: check-in notes, quotes and
             single requests stay with HR.
           </p>
@@ -278,8 +283,6 @@ export default function HrDashboard() {
         {tab === "checkins" && <CheckInsTab checkIns={checkIns.filter(inTeam)} />}
       </main>
 
-      {/* key: a new chat when switching between HR and a manager, so nothing carries over */}
-      <Assistant key={viewAs} view={{ tab, team, role: managerTeam ? "manager" : "hr" }} />
 
       <div role="status" aria-live="polite" className="sr-only">
         {announce}

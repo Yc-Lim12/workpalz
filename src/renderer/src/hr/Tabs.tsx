@@ -26,8 +26,8 @@ const td = "px-4 py-3.5 align-top text-[14px]";
 function Title({ title, intro }: { title: string; intro: string }) {
   return (
     <div className="flex flex-col gap-1">
-      <h1 className="m-0 text-[28px] font-bold tracking-tight">{title}</h1>
-      <p className="m-0 text-[14px]" style={{ color: C.muted }}>
+      <h1 className="m-0 text-[24px] font-bold tracking-tight">{title}</h1>
+      <p className="m-0 text-[13px]" style={{ color: C.muted }}>
         {intro}
       </p>
     </div>
