@@ -158,6 +158,24 @@ export const store = {
     save();
   },
 
+  // One weekly check-in per person: within the same week, checking in again changes the answer
+  // instead of adding another (which would count them twice in HR's numbers and themes)
+  myCheckInThisWeek: (employeeId: string) =>
+    data.checkIns
+      .filter((c) => c.employeeId === employeeId && inLastWeek(c.createdAt))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0],
+
+  saveMyCheckIn(c: Omit<CheckIn, "id" | "createdAt">): { updated: boolean } {
+    const existing = store.myCheckInThisWeek(c.employeeId);
+    if (!existing) {
+      store.addCheckIn(c);
+      return { updated: false };
+    }
+    Object.assign(existing, { ...c, createdAt: now() });
+    save();
+    return { updated: true };
+  },
+
   addAsk(a: Omit<Ask, "id" | "createdAt">) {
     data.asks.push({ ...a, id: randomUUID(), createdAt: now() });
     save();

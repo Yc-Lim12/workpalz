@@ -26,6 +26,7 @@ const api: WorkPalzApi = {
   getMe: call("me:get"),
   getQuestion: call("checkin:question"),
   submitCheckIn: call("checkin:add"),
+  getMyCheckIn: call("checkin:mine"),
   ask: call("ask"),
   submitRequest: call("request:add"),
   suggestRequest: call("request:suggest"),

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { MOODS, REQUEST_CATEGORIES, STATUS_LABEL, type AskResult, type Availability, type CheckInReply, type Colleague, type ColleagueSuggestion, type GuideTip, type Ping, type PingInput, type RequestSuggestion, type CheckInInput, type Mood, type MyDataSummary, type Notice, type RequestCategory, type RequestInput, type Shortcuts, type SupportRequest, DEFAULT_SHORTCUTS } from "../../../shared/types";
+import { MOODS, REQUEST_CATEGORIES, STATUS_LABEL, type AskResult, type Availability, type CheckInReply, type MyCheckIn, type Colleague, type ColleagueSuggestion, type GuideTip, type Ping, type PingInput, type RequestSuggestion, type CheckInInput, type Mood, type MyDataSummary, type Notice, type RequestCategory, type RequestInput, type Shortcuts, type SupportRequest, DEFAULT_SHORTCUTS } from "../../../shared/types";
 import { AMBER, BLUE, MUTED } from "./theme";
 import { Btn, Choice, Dot, Header, inputClass } from "./ui";
 
@@ -9,11 +9,11 @@ function useDraft<T>(key: string, initial: T) {
   const update = (v: T) => { drafts[key] = v; set(v); };
   return [value, update] as const;
 }
-const clearDrafts = (prefix: string) => {
+export const clearDrafts = (prefix: string) => {
   for (const k of Object.keys(drafts)) if (k.startsWith(prefix)) delete drafts[k];
 };
 
-export function MenuView(p: { pending: boolean; focusRunning: boolean; focusLeft: string; openRequests: number; onOpen: (v: "ask" | "request" | "ping" | "checkin" | "privacy" | "settings") => void; onToggleFocus: () => void; onHide: () => void; onClose: () => void; }) {
+export function MenuView(p: { pending: boolean; doneThisWeek: boolean; focusRunning: boolean; focusLeft: string; openRequests: number; onOpen: (v: "ask" | "request" | "ping" | "checkin" | "privacy" | "settings") => void; onToggleFocus: () => void; onHide: () => void; onClose: () => void; }) {
   const tile = "flex min-h-[76px] w-full cursor-pointer flex-col items-start justify-between gap-1 rounded-2xl [background-color:var(--bg)] px-3.5 py-3 text-left transition hover:opacity-80 active:scale-[0.97] border [border-color:var(--line)]";
   return (
     <section aria-labelledby="menu-title" className="flex flex-col gap-3">
@@ -41,7 +41,7 @@ export function MenuView(p: { pending: boolean; focusRunning: boolean; focusLeft
           <button type="button" className={tile} onClick={() => p.onOpen("checkin")}>
             <span className="flex items-center gap-2 text-[12px]" style={{ color: MUTED }}>
               {p.pending && <Dot color={AMBER} pulse />}
-              {p.pending ? "Waiting for you" : "Anytime"}
+              {p.pending ? "Waiting for you" : p.doneThisWeek ? "Done this week ✓" : "Once a week"}
             </span>
             <span className="text-[14px] font-semibold [color:var(--ink)]">Weekly check-in</span>
           </button>
@@ -63,11 +63,13 @@ export function MenuView(p: { pending: boolean; focusRunning: boolean; focusLeft
   );
 }
 
-export function CheckInView(p: { question: string; onSubmit: (i: CheckInInput) => Promise<void>; onClose: () => void; onBack: () => void; }) {
-  const [mood, setMood] = useDraft<Mood | null>("ci.mood", null);
-  const [note, setNote] = useDraft("ci.note", "");
-  const [shareName, setShareName] = useDraft("ci.share", false);
-  const [notifyMe, setNotifyMe] = useDraft("ci.notify", true);
+export function CheckInView(p: { question: string; existing: MyCheckIn | null; onSubmit: (i: CheckInInput) => Promise<void>; onClose: () => void; onBack: () => void; }) {
+  // Already checked in this week: start from that answer, and saving changes it
+  const e = p.existing;
+  const [mood, setMood] = useDraft<Mood | null>("ci.mood", e?.mood ?? null);
+  const [note, setNote] = useDraft("ci.note", e?.note ?? "");
+  const [shareName, setShareName] = useDraft("ci.share", e?.shareName ?? false);
+  const [notifyMe, setNotifyMe] = useDraft("ci.notify", e?.notifyMe ?? true);
   const [sending, setSending] = useState(false);
 
   const submit = async (e: FormEvent) => {
@@ -84,7 +86,12 @@ export function CheckInView(p: { question: string; onSubmit: (i: CheckInInput) =
 
   return (
     <form onSubmit={submit} aria-labelledby="ci-title" className="flex flex-col gap-3.5">
-      <Header id="ci-title" color={AMBER} title="Weekly check-in" right="About 10 seconds" onBack={p.onBack} />
+      <Header id="ci-title" color={AMBER} title="Weekly check-in" right={e ? "Done this week ✓" : "About 10 seconds"} onBack={p.onBack} />
+      {e && (
+        <p className="m-0 text-[13px] leading-snug" style={{ color: MUTED }}>
+          You already checked in this week. Changing your answer replaces it; HR still counts it once.
+        </p>
+      )}
       <fieldset className="m-0 flex flex-col gap-3 border-0 p-0">
         <legend className="mb-3 p-0 text-[17px] font-semibold leading-snug [color:var(--ink)]">{p.question}</legend>
         <div className="grid grid-cols-5 gap-1.5">
@@ -117,7 +124,7 @@ export function CheckInView(p: { question: string; onSubmit: (i: CheckInInput) =
       </fieldset>
 
       <div className="flex gap-2">
-        <Btn type="submit" variant="primary" className="flex-[2]" disabled={!mood || sending}>{sending ? "Sending…" : "Send"}</Btn>
+        <Btn type="submit" variant="primary" className="flex-[2]" disabled={!mood || sending}>{sending ? "Sending…" : e ? "Update" : "Send"}</Btn>
         <Btn className="flex-1" onClick={p.onClose}>Not now</Btn>
       </div>
     </form>
@@ -999,11 +1006,11 @@ export function TourView(p: { name: string; shortcut: string; where: string; onD
 
 // ---------- After a check-in: give something back ----------
 
-export function CheckInThanksView(p: { reply: CheckInReply; onOpenLink: (url: string) => void; onDone: () => void }) {
+export function CheckInThanksView(p: { reply: CheckInReply; updated: boolean; onOpenLink: (url: string) => void; onDone: () => void }) {
   const r = p.reply.openRequest;
   return (
     <section aria-labelledby="thanks-title" className="flex flex-col gap-3">
-      <Header id="thanks-title" color={AMBER} title="Thanks, check-in sent" />
+      <Header id="thanks-title" color={AMBER} title={p.updated ? "Thanks, check-in updated" : "Thanks, check-in sent"} />
       {r && (
         <p className="m-0 rounded-2xl [background-color:var(--bg)] border [border-color:var(--line)] p-3.5 text-[13.5px] leading-relaxed [color:var(--ink)]">
           Your <strong>{r.label.toLowerCase()}</strong> request is with {r.dept}: {STATUS_LABEL[r.status].toLowerCase()},{" "}

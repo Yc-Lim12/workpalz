@@ -301,3 +301,14 @@ describe("Fixes from the code review", () => {
     expect(all.answer).toMatch(/no data for this team/);
   });
 });
+
+describe("Weekly check-in", () => {
+  it("checking in again the same week changes the answer instead of adding one", () => {
+    const base = { employeeId: "e5", team: "Engineering", week: 2, question: "q", note: "", shareName: false, notifyMe: true };
+    const before = store.checkIns().length;
+    expect(store.saveMyCheckIn({ ...base, mood: "stuck" }).updated).toBe(false);
+    expect(store.saveMyCheckIn({ ...base, mood: "great", note: "Sorted now" }).updated).toBe(true);
+    expect(store.checkIns().length).toBe(before + 1);
+    expect(store.myCheckInThisWeek("e5")?.mood).toBe("great");
+  });
+});

@@ -5,8 +5,8 @@ WorkPalz has three levels of automated testing, plus a manual check before demo 
 | Level | Command | Time | What it answers |
 |---|---|---|---|
 | 1. Typecheck | `npm run typecheck` | ~5 s | Does the code make sense? |
-| 2. Unit tests | `npm test` | ~1 s | Is the logic right? (27 tests) |
-| 3. End-to-end | `npm run build && npm run test:e2e` | ~1.5 min | Does the real app work? (98 checks) |
+| 2. Unit tests | `npm test` | ~1 s | Is the logic right? (28 tests) |
+| 3. End-to-end | `npm run build && npm run test:e2e` | ~1.5 min | Does the real app work? (99 checks) |
 | 4. Manual demo run | see below | ~5 min | Does it look and feel right? |
 
 ## 1. Typecheck
@@ -23,7 +23,7 @@ TypeScript reads all the code without running it and catches mistakes such as a 
 npm test
 ```
 
-27 tests in [tests/logic.test.ts](tests/logic.test.ts) check the app's logic without opening any window. They always use the offline AI.
+28 tests in [tests/logic.test.ts](tests/logic.test.ts) check the app's logic without opening any window. They always use the offline AI.
 
 | Area | What's checked |
 |---|---|
@@ -39,7 +39,7 @@ npm test
 | Code review fixes | HR never gets employee IDs or the "tell me" choice; Re-analyse can't create a follow-up twice; who gets told is fixed when the follow-up is made; reopened requests say "open"; "Delete my data" removes themes that could quote them; a manager view can't fall back to full HR data |
 | Island AI helpers | Smart request picks the category and a guide answer; "Who can help?" picks the right colleague; a stuck check-in gets a tip and the related request status |
 
-**Pass = "27 passed".**
+**Pass = "28 passed".**
 
 ## 3. End-to-end test
 
@@ -82,7 +82,7 @@ npm run test:e2e
 
 ### What you get
 
-- `PASS` or `FAIL` for each check, ending with **"98/98 checks passed"**
+- `PASS` or `FAIL` for each check, ending with **"99/99 checks passed"**
 - A screenshot of every screen in `tests/e2e/shots/` (handy for pitch slides; not committed to git)
 - Full results, including any accessibility problems, in `tests/e2e/shots/results.json`
 

@@ -37,6 +37,8 @@ export type CheckIn = {
 };
 
 export type CheckInInput = { mood: Mood; note: string; shareName: boolean; notifyMe: boolean };
+// The person's own check-in for this week (one per week; checking in again changes it)
+export type MyCheckIn = { mood: Mood; note: string; shareName: boolean; notifyMe: boolean; createdAt: string };
 
 // ---------- Ask WorkPalz (jargon + quick search) ----------
 // Answers come from the "company guide": the company's knowledge, kept in three places.
@@ -262,6 +264,7 @@ export type IslandEvent =
   | { type: "toggle-hidden" }
   | { type: "show" }
   | { type: "hide" }
+  | { type: "reset" } // demo reset: also clear what the island keeps (recent questions, drafts, Quiet)
   | { type: "idle" } // shrink now (what 10 idle minutes does)
   | { type: "quiet"; until: "hour" | "tomorrow" | "off" }
   | { type: "blur" }
@@ -301,6 +304,7 @@ export type WorkPalzApi = {
   getMe: () => Promise<Employee>;
   getQuestion: () => Promise<string>;
   submitCheckIn: (input: CheckInInput) => Promise<CheckInReply>;
+  getMyCheckIn: () => Promise<MyCheckIn | null>;
   ask: (question: string) => Promise<AskResult>;
   submitRequest: (input: RequestInput) => Promise<void>;
   suggestRequest: (text: string) => Promise<RequestSuggestion>;

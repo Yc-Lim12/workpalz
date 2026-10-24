@@ -210,7 +210,7 @@ function applyShortcuts() {
   globalShortcut.register("CommandOrControl+Alt+R", () => {
     resetStore();
     broadcastChange();
-    sendIsland({ type: "collapse" });
+    sendIsland({ type: "reset" });
   });
 }
 
@@ -275,12 +275,16 @@ function registerIpc() {
 
   ipcMain.handle("me:get", () => me());
   ipcMain.handle("checkin:question", () => questionForWeek(me().week));
+  ipcMain.handle("checkin:mine", () => {
+    const c = store.myCheckInThisWeek(ME_ID);
+    return c ? { mood: c.mood, note: c.note, shareName: c.shareName, notifyMe: c.notifyMe !== false, createdAt: c.createdAt } : null;
+  });
 
   ipcMain.handle("checkin:add", async (_e, input: CheckInInput) => {
     if (!MOODS.some((x) => x.id === input?.mood)) throw new Error("Unknown mood");
     const m = me();
     const note = String(input.note ?? "").trim().slice(0, 280);
-    store.addCheckIn({
+    store.saveMyCheckIn({
       employeeId: m.id,
       team: m.team,
       week: m.week,
@@ -430,7 +434,7 @@ function registerIpc() {
   ipcMain.handle("demo:reset", () => {
     resetStore();
     broadcastChange();
-    sendIsland({ type: "collapse" });
+    sendIsland({ type: "reset" });
   });
 }
 

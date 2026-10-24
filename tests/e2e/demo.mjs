@@ -204,6 +204,10 @@ check("A stuck check-in gets something useful back", (await island.locator(".isl
 await axe(island, "island check-in thanks");
 await island.getByRole("button", { name: "Got it" }).click();
 await settle();
+await openMenu();
+check("After checking in, the menu says 'Done this week'", (await island.locator(".island-shell").innerText()).includes("Done this week"));
+await island.keyboard.press("Escape");
+await settle(1000);
 
 // Focus timer
 await openMenu();

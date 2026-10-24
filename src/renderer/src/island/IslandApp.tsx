@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import Island, { type PillInfo } from "./Island";
 import { AMBER, BLUE, type IslandView } from "./theme";
-import { AskView, CheckInThanksView, CheckInView, clearAskHistory, MenuView, NoticeView, PingView, PrivacyView, RequestView, SettingsView, StepBackView, TourView, displayShortcut, isMac, loadShortcuts } from "./views";
+import { AskView, CheckInThanksView, CheckInView, clearAskHistory, clearDrafts, MenuView, NoticeView, PingView, PrivacyView, RequestView, SettingsView, StepBackView, TourView, displayShortcut, isMac, loadShortcuts } from "./views";
 import { REQUEST_CATEGORIES } from "../../../shared/types";
-import type { CheckInReply, Colleague, Employee, IslandLayout, Notice, Ping, SupportRequest } from "../../../shared/types";
+import type { MyCheckIn, CheckInReply, Colleague, Employee, IslandLayout, Notice, Ping, SupportRequest } from "../../../shared/types";
 
 const api = window.workpalz;
 const FOCUS_MS = 25 * 60 * 1000;
@@ -47,6 +47,8 @@ export default function IslandApp() {
   const [hidden, setHidden] = useState(false);
   const [mini, setMini] = useState(false);
   const [checkInReply, setCheckInReply] = useState<CheckInReply | null>(null);
+  const [myCheckIn, setMyCheckIn] = useState<MyCheckIn | null>(null);
+  const [checkInUpdated, setCheckInUpdated] = useState(false);
   // Quiet (do not disturb): nothing pops up; anything waiting shows as a number by the clock
   const [quietUntil, setQuietUntil] = useState<number | null>(readQuiet);
   const [lastActive, setLastActive] = useState(Date.now());
@@ -198,7 +200,8 @@ export default function IslandApp() {
   }, [view, hidden, mini, quiet]);
 
   const refresh = useCallback(async () => {
-    const [r, n, pg] = await Promise.all([api.listMyRequests(), api.listMyNotices(), api.listMyPings()]);
+    const [r, n, pg, ci] = await Promise.all([api.listMyRequests(), api.listMyNotices(), api.listMyPings(), api.getMyCheckIn()]);
+    setMyCheckIn(ci);
     setRequests(r);
     setNotices(n);
     setPings(pg);
@@ -300,6 +303,18 @@ export default function IslandApp() {
           }, 50);
         }
         if (ev.type === "collapse") {
+          setPending(false);
+          setFocusEnd(null);
+          collapse();
+        }
+        // Demo reset: a completely clean start, island side included
+        if (ev.type === "reset") {
+          clearAskHistory();
+          clearDrafts("");
+          setQuiet(null);
+          setHidden(false);
+          setMini(false);
+          setFlash(null);
           setPending(false);
           setFocusEnd(null);
           collapse();
@@ -478,6 +493,7 @@ export default function IslandApp() {
             {view === "menu" && (
               <MenuView
                 pending={pending}
+                doneThisWeek={!!myCheckIn}
                 focusRunning={!!focusEnd}
                 focusLeft={focusEnd ? mmss(focusEnd - now) : ""}
                 openRequests={openRequests}
@@ -490,17 +506,20 @@ export default function IslandApp() {
             {view === "checkin" && (
               <CheckInView
                 question={question}
+                existing={myCheckIn}
                 onClose={collapse}
                 onBack={() => open("menu")}
                 onSubmit={async (input) => {
+                  const updated = !!myCheckIn;
                   const reply = await api.submitCheckIn(input);
                   setPending(false);
+                  setCheckInUpdated(updated);
                   if (reply.tip || reply.openRequest) {
                     setCheckInReply(reply); // something useful to give back
                     open("thanks", false);
                   } else {
                     collapse();
-                    showFlash("Thanks, check-in sent");
+                    showFlash(updated ? "Check-in updated" : "Thanks, check-in sent");
                   }
                 }}
               />
@@ -567,7 +586,7 @@ export default function IslandApp() {
               <SettingsView onBack={() => open("menu")} onReplayTour={() => open("tour")} />
             )}
             {view === "thanks" && checkInReply && (
-              <CheckInThanksView reply={checkInReply} onOpenLink={api.openLink} onDone={collapse} />
+              <CheckInThanksView reply={checkInReply} updated={checkInUpdated} onOpenLink={api.openLink} onDone={collapse} />
             )}
             {view === "away" && (
               <StepBackView
