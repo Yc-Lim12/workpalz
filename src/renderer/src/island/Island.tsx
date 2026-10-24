@@ -1,5 +1,5 @@
 // The island shell: morphs between views with a spring, merges into the MacBook notch.
-import { type ReactNode, type RefObject } from "react";
+import { type MutableRefObject, type ReactNode, type RefObject } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { IslandLayout } from "../../../shared/types";
 import { ISLAND_MAX_HEIGHT, MINI_HEIGHT, MINI_SIDE, MINI_WIDTH, MORPH, NOTCH_GAP, NOTCH_PILL_WIDTH, RADIUS, WIDTH, type IslandView } from "./theme";
@@ -61,7 +61,11 @@ export default function Island({ view, mini = false, layout, pill, onPillClick, 
           ) : (
             // Never taller than the island's window: long views (or zoomed text) scroll instead of being cut off
             <div
-              ref={contentRef}
+              ref={(el) => {
+                // Views cross-fade, so for a moment the old and new view both exist. Only ever point
+                // at the newest one: when the old one unmounts it must not clear the ref.
+                if (el) (contentRef as MutableRefObject<HTMLDivElement | null>).current = el;
+              }}
               className="px-5 pb-5 w-full box-border overflow-y-auto"
               style={{ paddingTop: notch ? layout.topInset + 10 : 18, maxHeight: ISLAND_MAX_HEIGHT - (notch ? 0 : 6) }}
             >

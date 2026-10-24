@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import {
   guideLabel,
   NEGATIVE_MOODS,
+  STATUS_LABEL,
   type Action,
   type Analysis,
   type Ask,
@@ -20,6 +21,7 @@ import {
   type HrAsk,
   type HrCheckIn,
   type HrImpact,
+  type HrRequest,
   type HrStats,
   type Mood,
   type Notice,
@@ -35,7 +37,9 @@ import { HANDBOOK } from "./handbook";
 // These IDs never reach the HR window.
 export type InternalTheme = Theme & { contributorIds: string[] };
 export type InternalAnalysis = Omit<Analysis, "themes"> & { themes: InternalTheme[] };
-type InternalAction = Action & { contributorIds: string[] };
+// notifyIds: who asked to hear back, fixed when the follow-up is created (from their check-ins then),
+// so a later check-in can't silently change who gets told about this one
+type InternalAction = Action & { contributorIds: string[]; notifyIds?: string[] };
 
 type Data = {
   version: 2;
@@ -86,24 +90,52 @@ function save() {
 }
 
 export function loadStore() {
+  let raw: string | null = null;
   try {
-    const parsed = JSON.parse(fs.readFileSync(file(), "utf8"));
-    data = parsed.version === 2 ? parsed : fresh();
-    data.pings ??= []; // saved before pings existed
+    raw = fs.readFileSync(file(), "utf8");
+    const parsed = JSON.parse(raw);
+    if (parsed.version !== 2) throw new Error("unknown version");
+    data = parsed;
+    // Fill in anything an older or partly written file doesn't have
+    const f = fresh();
+    data.employees ??= f.employees;
+    data.checkIns ??= [];
+    data.asks ??= [];
+    data.requests ??= [];
+    data.actions ??= [];
+    data.notices ??= [];
+    data.pings ??= [];
     data.handbook ??= [];
     data.solvedByGuide ??= [];
+    data.analysis ??= null;
+    for (const a of data.actions) a.contributorIds ??= [];
+    for (const t of data.analysis?.themes ?? []) t.contributorIds ??= [];
   } catch {
+    // Unreadable: keep a copy instead of silently overwriting it, then start fresh
+    if (raw !== null) {
+      try {
+        fs.writeFileSync(file() + ".bak", raw);
+      } catch {}
+    }
     data = fresh();
   }
   save();
 }
 
+// Bumped on reset and "delete my data": slow work (AI) started before must not save stale results
+let generation = 0;
+export const storeGeneration = () => generation;
+
 export function resetStore() {
+  generation++;
   data = fresh();
   save();
 }
 
 const strip = <T extends { contributorIds: string[] }>({ contributorIds: _c, ...rest }: T) => rest;
+
+// Who gets told when a follow-up is done (older saved follow-ups: decide from check-ins now)
+const toTell = (a: InternalAction) => (a.notifyIds ?? a.contributorIds.filter(wantsUpdates)).filter((id) => a.contributorIds.includes(id));
 
 // A person's latest check-in says whether they want updates when HR acts on what they raised
 function wantsUpdates(employeeId: string) {
@@ -216,6 +248,7 @@ export const store = {
 
   // Right to erasure. Requests stay only if still open (IT is mid-way), but are anonymised.
   deleteMyData(employeeId: string) {
+    generation++;
     data.checkIns = data.checkIns.filter((c) => c.employeeId !== employeeId);
     data.asks = data.asks.filter((a) => a.employeeId !== employeeId);
     data.notices = data.notices.filter((n) => n.employeeId !== employeeId);
@@ -223,8 +256,13 @@ export const store = {
     data.requests = data.requests
       .filter((r) => r.employeeId !== employeeId || r.status !== "resolved")
       .map((r) => (r.employeeId === employeeId ? { ...r, employeeId: "deleted", name: "Former requester" } : r));
-    for (const t of data.analysis?.themes ?? []) t.contributorIds = t.contributorIds.filter((id) => id !== employeeId);
-    for (const a of data.actions) a.contributorIds = a.contributorIds.filter((id) => id !== employeeId);
+    for (const a of data.actions) {
+      a.contributorIds = a.contributorIds.filter((id) => id !== employeeId);
+      if (a.notifyIds) a.notifyIds = a.notifyIds.filter((id) => id !== employeeId);
+    }
+    // AI themes quote check-ins, questions and requests. If any came from this person, the themes
+    // have to go (HR presses Analyse again) so none of their words stay visible.
+    if (data.analysis?.themes.some((t) => t.contributorIds.includes(employeeId))) data.analysis = null;
     save();
   },
 
@@ -232,7 +270,7 @@ export const store = {
   hrTeams: () => Array.from(new Set(data.employees.map((e) => e.team))),
 
   hrCheckIns(): HrCheckIn[] {
-    return data.checkIns.map(({ employeeId, shareName, ...c }) => ({
+    return data.checkIns.map(({ employeeId, shareName, notifyMe: _n, ...c }) => ({
       ...c,
       name: shareName ? (data.employees.find((e) => e.id === employeeId)?.name ?? null) : null,
     }));
@@ -250,7 +288,7 @@ export const store = {
     }));
   },
 
-  hrRequests: () => data.requests,
+  hrRequests: (): HrRequest[] => data.requests.map(({ employeeId: _e, ...r }) => r),
 
   hrStats(team: string): HrStats {
     const inTeam = <T extends { team: string }>(x: T) => team === "All" || x.team === team;
@@ -287,8 +325,12 @@ export const store = {
       oldestOpenDays: open.length ? Math.floor(Math.max(...open.map((r) => days(r.createdAt, now())))) : null,
       followUpsDone: done.length,
       followUpsOpen: actions.length - done.length,
-      peopleTold: new Set(done.flatMap((a) => a.contributorIds.filter(wantsUpdates))).size,
-      handbookAdded: data.handbook.length,
+      peopleTold: new Set(done.flatMap(toTell)).size,
+      // Entries HR added that answered this team's questions (company-wide when "All")
+      handbookAdded:
+        team === "All"
+          ? data.handbook.length
+          : new Set(data.asks.filter((a) => inTeam(a) && a.entryId?.startsWith("hr-")).map((a) => a.entryId)).size,
       questionsNowAnswered: data.asks.filter((a) => inTeam(a) && a.entryId?.startsWith("hr-")).length,
       solvedByGuide: data.solvedByGuide.filter(inTeam).length,
       checkInRate: { thisWeek: rate(inLastWeek), lastWeek: rate(inWeekBefore) },
@@ -304,7 +346,7 @@ export const store = {
       store.notify(
         r.employeeId,
         status === "resolved" ? "Request resolved" : "Request update",
-        `Your request "${r.description}" is now ${status === "resolved" ? "resolved" : "in progress"}.`
+        `Your request "${r.description}" is now ${STATUS_LABEL[status].toLowerCase()}.`
       );
     }
     save();
@@ -320,11 +362,16 @@ export const store = {
     return { ...data.analysis, themes: data.analysis.themes.map(strip) };
   },
 
-  hrActions: (): Action[] => data.actions.map((a) => ({ ...strip(a), peopleToTell: a.contributorIds.filter(wantsUpdates).length })),
+  hrActions: (): Action[] =>
+    data.actions.map((a) => {
+      const { notifyIds: _n, ...rest } = a; // who exactly is never sent to HR, only how many
+      return { ...strip(rest), peopleToTell: toTell(a).length };
+    }),
 
   addAction(themeId: string) {
     const t = data.analysis?.themes.find((x) => x.id === themeId);
-    if (!t || data.actions.some((a) => a.themeId === themeId)) return;
+    // Re-analysing gives the same theme again: one follow-up per team + theme, so nobody is told twice
+    if (!t || data.actions.some((a) => a.themeId === themeId || (a.team === t.team && a.themeTitle === t.title))) return;
     data.actions.unshift({
       id: randomUUID(),
       themeId,
@@ -335,6 +382,7 @@ export const store = {
       status: "open",
       createdAt: now(),
       contributorIds: [...t.contributorIds],
+      notifyIds: t.contributorIds.filter(wantsUpdates),
     });
     save();
   },
@@ -346,12 +394,12 @@ export const store = {
     a.status = status;
     a.doneAt = status === "done" ? now() : undefined;
     if (status === "done") {
-      for (const employeeId of a.contributorIds.filter(wantsUpdates)) {
+      for (const employeeId of toTell(a)) {
         store.notify(employeeId, "Update on something you raised", `You and others raised: ${a.themeTitle.toLowerCase()}.\nWhat was done: ${a.action}`);
       }
     }
     save();
-    return status === "done" ? a.contributorIds.filter(wantsUpdates).length : 0;
+    return status === "done" ? toTell(a).length : 0;
   },
 
   notify(employeeId: string, title: string, body: string, from?: string) {

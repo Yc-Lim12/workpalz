@@ -18,14 +18,14 @@ export function Dot({ color, pulse }: { color: string; pulse?: boolean }) {
   );
 }
 
-export function Header({ color, title, right, id, onBack }: { color: string; title: string; right?: ReactNode; id?: string; onBack?: () => void; }) {
+export function Header({ color, title, right, id, onBack, backLabel = "Back to menu" }: { color: string; title: string; right?: ReactNode; id?: string; onBack?: () => void; backLabel?: string; }) {
   return (
     <div className="flex items-center gap-2">
       {onBack ? (
         <button
           type="button"
           onClick={onBack}
-          aria-label="Back to menu"
+          aria-label={backLabel}
           className="-ml-2 flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition [color:var(--ink)] hover:[background-color:var(--bg)]"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

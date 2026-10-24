@@ -15,7 +15,7 @@ New employees often struggle quietly in their first months: missing tools, uncle
   - **Team Glossary**: company jargon and project names ("Q4 OKR", "Project Aurora")
 
   Works like a search box: an × clears the question and the old answer, the first `Esc` clears and the second closes, and **recent questions** are listed to ask again (kept on that computer only; removed by "Delete my data").
-- **Smart Quick request** (AI): describe the problem in your own words. One screen shows a matching answer from the company guide ("That fixed it" = no ticket needed) and where the request goes ("Goes to: IT · System access", picked for you, with Change); if you're still stuck, press "Send to IT". Track status afterwards.
+- **Smart Quick request** (hybrid AI): describe the problem in your own words, or tap a **quick button** (Laptop or hardware, Pay or claims, …) and just add a line. One screen shows a matching answer from the company guide ("That fixed it" = no ticket needed) and where the request goes ("Goes to: IT · System access", picked for you, with Change); if you're still stuck, press "Send to IT". Vague requests ("I want to submit an IT ticket") get one short question first. Track status afterwards.
 - **Ping a colleague**: search by name or topic ("VPN", "staging server"), or describe the problem and press **✦ Who can help with this?** (AI suggests the right person). See who's available and ask them for help. Only the colleague sees it, never HR.
 - **Weekly check-in**: one tap plus an optional note. The question changes with the onboarding stage. Anonymous to HR by default, with a choice to hear back if HR acts on it (see below). If you say you're stuck, WorkPalz gives something back straight away (AI): a matching guide answer and the status of your related open request.
 - **Focus timer**: 25-minute focus session shown in the pill.
@@ -47,6 +47,7 @@ New employees often struggle quietly in their first months: missing tools, uncle
 - Names and IDs are never sent to the AI. Theme analysis sees "P1, P2…" only so it can count people; the HR assistant gets no names at all.
 - The HR window only receives sanitised data (enforced in `src/main/store.ts`). The manager limits are enforced in `src/main/assistant.ts`, not just hidden on screen.
 - AI answers in Ask WorkPalz are grounded in the company guide and say which part they come from; if it isn't there, it says so. The AI never rewords formal Employee Handbook policy, and its drafts never invent company facts.
+- **Hybrid on the island**: Quick request and "Who can help?" answer clear cases with keyword rules (instant, the same every time) and only ask the AI about wording the rules can't place. The person always confirms where a request goes.
 - AI suggests, people decide. Never used for performance reviews.
 
 ## Accessibility (WCAG 2.2 AA)
@@ -75,8 +76,8 @@ Without a key, WorkPalz uses its offline analyser, company guide search and simp
 | Command | What it does |
 |---|---|
 | `npm run dev` | Run the app |
-| `npm test` | Run the logic tests (21) |
-| `npm run build && npm run test:e2e` | Drive the real app through every feature, screenshot it and run a WCAG scan on every screen (94 checks) |
+| `npm test` | Run the logic tests (27) |
+| `npm run build && npm run test:e2e` | Drive the real app through every feature, screenshot it and run a WCAG scan on every screen (98 checks) |
 | `npm run typecheck` | TypeScript check |
 | `npm run dist:win` | Build a Windows installer (run on Windows) |
 | `npm run dist:mac` | Build a macOS .dmg |
@@ -119,7 +120,7 @@ src/
 │   ├── ai.ts                theme analysis (OpenAI + offline)
 │   ├── assistant.ts         Ask AI for HR/managers + company guide drafts
 │   ├── ask.ts               grounded Q&A over the company guide
-│   ├── helper.ts            island AI helpers: smart request, who can help, check-in reply
+│   ├── helper.ts            island helpers (rules first, AI only when unsure): smart request, who can help, check-in reply
 │   ├── openai.ts            OpenAI client with timeout
 │   ├── handbook.ts          fictional company guide: Employee Handbook, IT Help Centre, Team Glossary
 │   └── seed.ts              fictional demo data: new hires and colleagues

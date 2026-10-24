@@ -76,7 +76,7 @@ export default function Overview(p: {
         </Card>
       )}
 
-      {p.impact && <Impact impact={p.impact} />}
+      {p.impact && <Impact impact={p.impact} manager={p.manager} />}
 
       <section aria-labelledby="themes-title" className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -104,7 +104,7 @@ export default function Overview(p: {
         <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(340px,1fr))] gap-4 p-0">
           {themes.map((t) => {
             const sev = SEVERITY[t.severity] ?? SEVERITY.low;
-            const action = p.actions.find((a) => a.themeId === t.id);
+            const action = p.actions.find((a) => a.themeId === t.id || (a.team === t.team && a.themeTitle === t.title));
             const parts = [
               t.sources["check-in"] && `${t.sources["check-in"]} check-in${t.sources["check-in"] > 1 ? "s" : ""}`,
               t.sources.question && `${t.sources.question} unanswered question${t.sources.question > 1 ? "s" : ""}`,
@@ -220,7 +220,7 @@ function Change({ now, before, goodWhenUp, unit = "" }: { now: number; before: n
   );
 }
 
-function Impact({ impact: m }: { impact: HrImpact }) {
+function Impact({ impact: m, manager }: { impact: HrImpact; manager: boolean }) {
   const tiles: { label: string; value: string; sub: React.ReactNode }[] = [
     {
       label: "Check-in response rate",
@@ -235,7 +235,7 @@ function Impact({ impact: m }: { impact: HrImpact }) {
     {
       label: "Oldest open request",
       value: m.oldestOpenDays === null ? "None" : `${m.oldestOpenDays} days`,
-      sub: m.oldestOpenDays !== null && m.oldestOpenDays >= 5 ? "Blocking a new hire. See Requests" : "Waiting time",
+      sub: m.oldestOpenDays !== null && m.oldestOpenDays >= 5 ? (manager ? "Blocking a new hire. HR and IT are on it" : "Blocking a new hire. See Requests") : "Waiting time",
     },
     {
       label: "Follow-ups done",

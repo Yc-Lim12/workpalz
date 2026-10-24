@@ -65,6 +65,8 @@ export default function IslandApp() {
   quietRef.current = quiet;
   
   const toggleFocusRef = useRef<() => void>(() => {});
+  const attentionRef = useRef(0);
+  const focusEndRef = useRef<number | null>(null);
   const lastOpened = useRef(0); 
 
   // The island window is big and see-through, and sits on top of every app. It only catches
@@ -104,16 +106,23 @@ export default function IslandApp() {
     } catch {}
   };
 
+  const flashTimer = useRef<number | undefined>(undefined);
   const showFlash = (text: string) => {
     if (!quietRef.current) setHidden(false);
     setMini(false);
     setFlash(text);
     say(text);
-    window.setTimeout(() => setFlash(null), 3000);
+    window.clearTimeout(flashTimer.current); // a newer message gets its full 3 seconds
+    flashTimer.current = window.setTimeout(() => setFlash(null), 3000);
   };
+
+  // The 2.5 s "how to bring it back" hint before hiding: cancelled if they open it again meanwhile
+  const stepBackTimer = useRef<number | undefined>(undefined);
+  const cancelStepBack = () => window.clearTimeout(stepBackTimer.current);
 
   const open = useCallback((v: IslandView, userAction = true) => {
     clearClose();
+    if (userAction) cancelStepBack();
     setHidden(false);
     setMini(false);
     if (userAction) setQuiet(null); // opening it yourself ends Quiet
@@ -146,7 +155,8 @@ export default function IslandApp() {
         key ? `Press ${displayShortcut(key)}, or use` : "Use"
       } the WorkPalz icon in the ${where} to bring it back`
     );
-    window.setTimeout(() => {
+    cancelStepBack();
+    stepBackTimer.current = window.setTimeout(() => {
       setFlash(null);
       if (quietTill) {
         setQuiet(quietTill);
@@ -157,6 +167,7 @@ export default function IslandApp() {
   };
 
   const unhide = () => {
+    cancelStepBack();
     setHidden(false);
     setQuiet(null);
     setMini(false);
@@ -196,8 +207,11 @@ export default function IslandApp() {
   useEffect(() => {
     api.setShortcuts(loadShortcuts());
 
-    const savedTheme = localStorage.getItem('app-theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', savedTheme);
+    let savedTheme = "dark";
+    try {
+      savedTheme = localStorage.getItem("app-theme") || "dark";
+    } catch {}
+    document.documentElement.setAttribute("data-theme", savedTheme);
 
     api.getMe().then(setMe);
     api.getQuestion().then(setQuestion);
@@ -208,7 +222,11 @@ export default function IslandApp() {
     // First day: open once by itself and show how WorkPalz works
     let tour: number | undefined;
     try {
-      if (!localStorage.getItem(TOUR_KEY)) tour = window.setTimeout(() => open("tour", false), 1200);
+      if (!localStorage.getItem(TOUR_KEY)) {
+        // Only once, however it gets closed (Got it, Skip, Esc, clicking away)
+        localStorage.setItem(TOUR_KEY, "1");
+        tour = window.setTimeout(() => open("tour", false), 1200);
+      }
     } catch {}
     const stop = api.onDataChanged(() => {
       refresh();
@@ -261,7 +279,8 @@ export default function IslandApp() {
           if (hiddenRef.current) unhide();
           else hide();
         }
-        if (ev.type === "idle") setMini(true);
+        // Same rule as the idle timer: never shrink while a focus timer runs or something is waiting
+        if (ev.type === "idle" && !focusEndRef.current && !attentionRef.current) setMini(true);
         if (ev.type === "quiet") {
           if (ev.until === "off") unhide();
           else {
@@ -296,15 +315,27 @@ export default function IslandApp() {
     return () => window.clearTimeout(id);
   }, [away, mini, view, focusEnd, unread.length, pending, flash, lastActive]);
 
-  // Quiet ends by itself at the chosen time
+  // Quiet ends by itself at the chosen time. Checked every minute (and on waking), because a
+  // single long timer doesn't count time the laptop spent asleep.
   useEffect(() => {
     if (!quietUntil) return;
-    const id = window.setTimeout(() => setQuiet(null), Math.max(0, quietUntil - Date.now()));
-    return () => window.clearTimeout(id);
+    const check = () => {
+      if (Date.now() >= quietUntil) setQuiet(null);
+    };
+    const id = window.setInterval(check, 60 * 1000);
+    const first = window.setTimeout(check, Math.max(0, Math.min(quietUntil - Date.now(), 60 * 1000)));
+    window.addEventListener("focus", check);
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(first);
+      window.removeEventListener("focus", check);
+    };
   }, [quietUntil]);
 
   // The tray / menu bar icon shows how many things are waiting, and whether Quiet is on
   const attention = unread.length + (pending ? 1 : 0);
+  attentionRef.current = attention;
+  focusEndRef.current = focusEnd;
   useEffect(() => {
     api.reportStatus({ attention, quietUntil });
   }, [attention, quietUntil]);
@@ -342,11 +373,29 @@ export default function IslandApp() {
       if (!root || !document.hasFocus() || root.contains(document.activeElement)) return;
       const el =
         root.querySelector<HTMLElement>("[data-autofocus]") ??
-        root.querySelector<HTMLElement>('input, textarea, select, [href], button:not([aria-label="Back to menu"])');
+        root.querySelector<HTMLElement>('input, textarea, select, [href], button:not([aria-label^="Back to"])');
       el?.focus();
     }, 280);
     return () => window.clearTimeout(id);
   }, [view, layout]);
+
+  // Inside a view, the focused button can disappear (Continue, Change, a quick button, an Ask chip).
+  // Then focus would fall to nothing and a keyboard user starts from scratch: put it back on the
+  // view's main field instead.
+  useEffect(() => {
+    const onOut = () =>
+      window.setTimeout(() => {
+        if (viewRef.current === "pill" || !document.hasFocus()) return;
+        if (document.activeElement && document.activeElement !== document.body) return;
+        const root = contentRef.current;
+        const el =
+          root?.querySelector<HTMLElement>("[data-autofocus]") ??
+          root?.querySelector<HTMLElement>('input, textarea, select, [href], button:not([aria-label^="Back to"])');
+        el?.focus();
+      }, 0);
+    document.addEventListener("focusout", onOut);
+    return () => document.removeEventListener("focusout", onOut);
+  }, []);
 
   const scheduleClose = useCallback(() => {
     clearClose();

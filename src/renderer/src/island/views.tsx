@@ -74,8 +74,12 @@ export function CheckInView(p: { question: string; onSubmit: (i: CheckInInput) =
     e.preventDefault();
     if (!mood || sending) return;
     setSending(true);
-    await p.onSubmit({ mood, note: note.trim(), shareName, notifyMe });
-    clearDrafts("ci.");
+    try {
+      await p.onSubmit({ mood, note: note.trim(), shareName, notifyMe });
+      clearDrafts("ci.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -298,6 +302,17 @@ function TipCard({ tip, onOpenLink, children }: { tip: GuideTip; onOpenLink: (ur
   );
 }
 
+// Placeholder hints after tapping a quick action
+const QUICK_EXAMPLE: Record<RequestCategory, string> = {
+  software: "IDE licence for the payments project",
+  access: "no access to the staging server",
+  hardware: "laptop won't turn on",
+  "it-other": "Outlook keeps crashing",
+  leave: "half day on Friday afternoon",
+  payroll: "taxi claim from last week not paid",
+  other: "question about my probation review",
+};
+
 // Smart Quick request: describe it in your own words, then one screen with everything:
 // a matching guide answer (if any), where it goes (picked for you, changeable) and one Send button.
 export function RequestView(p: {
@@ -313,10 +328,17 @@ export function RequestView(p: {
   const [desc, setDesc] = useDraft("rq.desc", "");
   const [suggestion, setSuggestion] = useDraft<RequestSuggestion | null>("rq.sug", null);
   const [changing, setChanging] = useState(false); // showing all categories
+  const [picked, setPicked] = useDraft("rq.picked", false); // chose a quick button: no need to check
   const [checking, setChecking] = useState(false);
   const [sending, setSending] = useState(false);
   const recent = p.mine.slice(0, 3);
   const cat = REQUEST_CATEGORIES.find((c) => c.id === category);
+
+  // Cancel means "forget it": next time Quick request starts empty
+  const cancel = () => {
+    clearDrafts("rq.");
+    p.onClose();
+  };
 
   const check = async () => {
     if (!desc.trim() || checking) return;
@@ -335,8 +357,12 @@ export function RequestView(p: {
     if (!suggestion) return check();
     if (!category || !desc.trim() || sending) return;
     setSending(true);
-    await p.onSubmit({ category, description: desc.trim() });
-    clearDrafts("rq.");
+    try {
+      await p.onSubmit({ category, description: desc.trim() });
+      clearDrafts("rq.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -350,7 +376,11 @@ export function RequestView(p: {
           value={desc}
           onChange={(e) => {
             setDesc(e.target.value);
-            if (suggestion) {
+            if (!e.target.value.trim() && picked) {
+              setPicked(false); // emptied: back to the start, quick buttons included
+              setSuggestion(null);
+              setChanging(false);
+            } else if (suggestion && !picked) {
               setSuggestion(null); // changed the problem: check again
               setChanging(false);
             }
@@ -360,18 +390,46 @@ export function RequestView(p: {
           }}
           maxLength={280}
           rows={2}
-          placeholder="In your own words, e.g. my laptop won't connect to the VPN"
+          placeholder={picked && cat ? `What's wrong? e.g. ${QUICK_EXAMPLE[cat.id]}` : "In your own words, e.g. my laptop won't connect to the VPN"}
           className={`${inputClass} resize-none py-2.5 leading-snug`}
         />
       </div>
 
       {!suggestion ? (
-        <div className="flex gap-2">
-          <Btn type="submit" variant="primary" className="flex-[2]" disabled={!desc.trim() || checking}>{checking ? "Checking…" : "Continue"}</Btn>
-          <Btn className="flex-1" onClick={p.onClose}>Cancel</Btn>
-        </div>
+        <>
+          <div className="flex gap-2">
+            <Btn type="submit" variant="primary" className="flex-[2]" disabled={!desc.trim() || checking}>{checking ? "Checking…" : "Continue"}</Btn>
+            <Btn className="flex-1" onClick={cancel}>Cancel</Btn>
+          </div>
+          {/* Quick actions: already know what it is? Tap it, add a line, send. */}
+          <div className="flex flex-col gap-1.5">
+            <h3 className="m-0 text-[12.5px] font-semibold" style={{ color: MUTED }}>Or pick one</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {REQUEST_CATEGORIES.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    setCategory(c.id);
+                    setPicked(true);
+                    setSuggestion({ category: c.id, tip: null, askMore: null, source: "offline" });
+                    document.getElementById("rq-desc")?.focus();
+                  }}
+                  className="min-h-9 cursor-pointer rounded-full [background-color:var(--bg)] px-3 text-[12.5px] [color:var(--ink)] hover:opacity-80 border [border-color:var(--line)]"
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
       ) : (
         <>
+          {suggestion.askMore && (
+            <p role="status" className="m-0 rounded-xl [background-color:var(--amber-soft)] px-3.5 py-2.5 text-[13.5px] leading-snug [color:var(--ink)]">
+              <strong>Tell us a bit more:</strong> {suggestion.askMore} Add it above, or send as it is.
+            </p>
+          )}
           {suggestion.tip && (
             <TipCard tip={suggestion.tip} onOpenLink={p.onOpenLink}>
               <Btn
@@ -428,7 +486,7 @@ export function RequestView(p: {
             <Btn type="submit" variant="primary" className="flex-[2]" disabled={!category || !desc.trim() || sending}>
               {sending ? "Sending…" : suggestion.tip ? `Still stuck? Send to ${cat?.dept}` : `Send to ${cat?.dept}`}
             </Btn>
-            <Btn className="flex-1" onClick={p.onClose}>Cancel</Btn>
+            <Btn className="flex-1" onClick={cancel}>Cancel</Btn>
           </div>
         </>
       )}
@@ -569,15 +627,19 @@ export function PingView(p: {
     e.preventDefault();
     if (!picked || !message.trim() || sending) return;
     setSending(true);
-    await p.onSubmit({ colleagueId: picked.id, message: message.trim() });
-    clearDrafts("ping.");
+    try {
+      await p.onSubmit({ colleagueId: picked.id, message: message.trim() });
+      clearDrafts("ping.");
+    } finally {
+      setSending(false);
+    }
   };
 
   if (picked) {
     const a = AVAILABILITY[picked.availability];
     return (
       <form onSubmit={submit} aria-labelledby="ping-title" className="flex flex-col gap-3">
-        <Header id="ping-title" color={BLUE} title={`Ping ${firstName(picked.name)}`} right={a.label} onBack={() => setPickedId(null)} />
+        <Header id="ping-title" color={BLUE} title={`Ping ${firstName(picked.name)}`} right={a.label} onBack={() => setPickedId(null)} backLabel="Back to colleagues" />
         <PersonRow c={picked} />
         {picked.availability === "away" && (
           <p className="m-0 text-[12.5px]" style={{ color: MUTED }}>{firstName(picked.name)} is away. They'll see your ping when they're back.</p>
@@ -718,7 +780,13 @@ function ShortcutRow({ label, value, onChange }: { label: string, value: string,
 
     const handleKeyDown = (e: KeyboardEvent) => {
       e.preventDefault();
-      e.stopPropagation();
+      e.stopPropagation(); // capture phase: the island's own Esc handler never sees it
+
+      // Esc on its own cancels recording (it must never become a system-wide shortcut)
+      if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+        setIsRecording(false);
+        return;
+      }
 
       const keys: string[] = [];
       if (e.ctrlKey) keys.push('Ctrl');
@@ -740,8 +808,8 @@ function ShortcutRow({ label, value, onChange }: { label: string, value: string,
       setIsRecording(false);
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [isRecording, onChange]);
 
   return (
@@ -757,7 +825,7 @@ function ShortcutRow({ label, value, onChange }: { label: string, value: string,
               : '[background-color:var(--surface)] [border-color:var(--line)] [color:var(--ink)] hover:opacity-80'
           }`}
         >
-          {isRecording ? "Listening... Press keys" : (value ? displayShortcut(value) : "None")}
+          {isRecording ? "Press keys (Esc to cancel)" : (value ? displayShortcut(value) : "None")}
         </button>
         {value && (
           <button 
@@ -789,18 +857,28 @@ export function loadShortcuts(): Shortcuts {
 }
 
 export function SettingsView(p: { onBack: () => void; onReplayTour: () => void }) {
-  const [theme, setTheme] = useState(localStorage.getItem('app-theme') || 'dark');
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('app-theme') || 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
   const [shortcuts, setShortcuts] = useState(loadShortcuts);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('app-theme', theme);
+    try {
+      localStorage.setItem('app-theme', theme);
+    } catch {}
   }, [theme]);
 
   const updateShortcut = (key: keyof Shortcuts, value: string) => {
     const newShortcuts = { ...shortcuts, [key]: value };
     setShortcuts(newShortcuts);
-    localStorage.setItem('app-shortcuts', JSON.stringify(newShortcuts));
+    try {
+      localStorage.setItem('app-shortcuts', JSON.stringify(newShortcuts));
+    } catch {}
     window.workpalz.setShortcuts(newShortcuts);
   };
 

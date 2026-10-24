@@ -1,7 +1,7 @@
 // HR dashboard shell: header, navigation, team filter, live data and announcements.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { guideLabel } from "../../../shared/types";
-import type { Action, Analysis, HandbookEntry, HandbookInput, HrAsk, HrImpact, HrCheckIn, HrStats, RequestStatus, SupportRequest, Theme } from "../../../shared/types";
+import type { Action, Analysis, HandbookEntry, HandbookInput, HrAsk, HrImpact, HrCheckIn, HrRequest, HrStats, RequestStatus, Theme } from "../../../shared/types";
 import Assistant from "./Assistant";
 import Overview from "./Overview";
 import { CheckInsTab, FollowUpsTab, QuestionsTab, RequestsTab } from "./Tabs";
@@ -22,7 +22,7 @@ export default function HrDashboard() {
   const [impact, setImpact] = useState<HrImpact | null>(null);
   const [checkIns, setCheckIns] = useState<HrCheckIn[]>([]);
   const [asks, setAsks] = useState<HrAsk[]>([]);
-  const [requests, setRequests] = useState<SupportRequest[]>([]);
+  const [requests, setRequests] = useState<HrRequest[]>([]);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [actions, setActions] = useState<Action[]>([]);
   const [handbookAdded, setHandbookAdded] = useState<HandbookEntry[]>([]);
@@ -36,6 +36,7 @@ export default function HrDashboard() {
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   });
   const mainRef = useRef<HTMLElement>(null);
+  const refreshCall = useRef(0);
   const firstRender = useRef(true);
 
   const say = (t: string) => {
@@ -44,6 +45,7 @@ export default function HrDashboard() {
   };
 
   const refresh = useCallback(async () => {
+    const call = ++refreshCall.current;
     const [tm, st, im, c, a, r, an, ac, hb] = await Promise.all([
       api.hrTeams(),
       api.hrStats(team),
@@ -55,6 +57,7 @@ export default function HrDashboard() {
       api.listActions(),
       api.listHandbookAdded(),
     ]);
+    if (call !== refreshCall.current) return; // a newer refresh (e.g. another team) started: it wins
     setTeams(tm);
     setStats(st);
     setImpact(im);
@@ -88,7 +91,8 @@ export default function HrDashboard() {
   }, [tab]);
 
   const inTeam = <T extends { team: string }>(x: T) => team === "All" || x.team === team;
-  const latestFeedback = [...checkIns.map((c) => c.createdAt), ...asks.map((a) => a.createdAt), ...requests.map((r) => r.createdAt)].sort().pop();
+  // Only the team in view: a manager mustn't see another team's activity here
+  const latestFeedback = [...checkIns.filter(inTeam), ...asks.filter(inTeam), ...requests.filter(inTeam)].map((x) => x.createdAt).sort().pop();
   const stale = !!analysis && !!latestFeedback && latestFeedback > analysis.generatedAt;
   const openReq = requests.filter((r) => inTeam(r) && r.status !== "resolved").length;
   const openActions = actions.filter((a) => inTeam(a) && a.status === "open").length;

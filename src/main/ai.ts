@@ -3,7 +3,6 @@
 //   2. questions the company guide couldn't answer (onboarding gaps)
 //   3. open IT/HR requests
 // OpenAI when a key is set; offline rule-based analyser otherwise or if the call fails.
-import { randomUUID } from "node:crypto";
 import { NEGATIVE_MOODS, REQUEST_CATEGORIES, type Employee, type EvidenceSource, type Theme } from "../shared/types";
 import { inLastWeek, inWeekBefore, store, type InternalAnalysis, type InternalTheme } from "./store";
 import { aiJson } from "./openai";
@@ -25,6 +24,7 @@ function collectSignals() {
     push(period(a.createdAt), { employeeId: a.employeeId, team: a.team, source: "question", text: a.question });
   }
   for (const r of store.requests()) {
+    if (r.employeeId === "deleted") continue; // anonymised after "delete my data": not a person to count
     const label = REQUEST_CATEGORIES.find((x) => x.id === r.category)?.label ?? r.category;
     const s: Signal = { employeeId: r.employeeId, team: r.team, source: "request", text: `${label}: ${r.description}` };
     if (r.status !== "resolved") thisWeek.push(s); // anything still open is a current problem
@@ -75,6 +75,10 @@ export async function analyse(): Promise<InternalAnalysis> {
   }
   return { generatedAt: new Date().toISOString(), source: "offline", themes: analyseOffline(thisWeek, lastWeek, employees) };
 }
+
+// Same team + title = same theme across analyses, so follow-ups stay matched after Re-analyse
+const themeId = (team: string, title: string) =>
+  `${team}:${title}`.toLowerCase().replace(/[^a-z0-9:]+/g, "-").replace(/^-|-$/g, "");
 
 // ---------- OpenAI ----------
 
@@ -141,7 +145,7 @@ Return JSON only: {"themes":[{"title":string,"team":string,"people":string[],"la
       const lastWeekAffected = Math.max(0, Math.min(Number(t.lastWeekPeople) || 0, teamSize));
       const themeSignals = thisWeek.filter((s) => contributorIds.includes(s.employeeId));
       return {
-        id: randomUUID(),
+        id: themeId(team, String(t.title)),
         title: String(t.title),
         team,
         affected,
@@ -219,7 +223,7 @@ function analyseOffline(thisWeek: Signal[], lastWeek: Signal[], employees: Emplo
       const teamSize = sizes[team] ?? contributorIds.length;
       const lastWeekAffected = new Set(lastPool.filter((s) => s.team === team && rule.match.test(s.text)).map((s) => s.employeeId)).size;
       themes.push({
-        id: randomUUID(),
+        id: themeId(team, rule.title),
         title: rule.title,
         team,
         affected: contributorIds.length,

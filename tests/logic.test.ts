@@ -214,6 +214,17 @@ describe("AI helpers on the island (offline versions)", () => {
     expect(vpn.tip?.from).toBe("IT Help Centre");
     expect(vpn.category).toBe("access");
     expect((await suggestRequest("laptop keyboard keys sticking")).category).toBe("hardware");
+    // Inside Quick request: no "use Quick request" tip, just where it goes
+    const broken = await suggestRequest("the laptop broken", { selfHelpOnly: true });
+    expect(broken.category).toBe("hardware");
+    expect(broken.tip).toBeNull();
+    expect((await suggestRequest("I need an IDE licence", { selfHelpOnly: true })).tip).toBeNull();
+    expect((await suggestRequest("vpn not working", { selfHelpOnly: true })).tip?.id).toBe("vpn");
+    // "IT ticket" with no problem: goes to IT, and asks what's wrong
+    const vague = await suggestRequest("I want to submit IT ticket", { selfHelpOnly: true });
+    expect(vague.category).toBe("it-other");
+    expect(vague.askMore).toMatch(/What isn't working/);
+    expect((await suggestRequest("my outlook keeps crashing", { selfHelpOnly: true })).askMore).toBeNull();
     expect((await suggestRequest("I need a licence for the IDE")).category).toBe("software");
     expect((await suggestRequest("half day leave on Friday")).category).toBe("leave");
   });
@@ -230,7 +241,7 @@ describe("AI helpers on the island (offline versions)", () => {
     const r = await checkInReply("e1", "Still waiting on my IDE licence", true);
     expect(r.tip?.id).toBe("software-licence");
     expect(r.openRequest?.dept).toBe("IT");
-    expect(r.openRequest?.days).toBeGreaterThanOrEqual(4);
+    expect(r.openRequest?.days).toBeGreaterThanOrEqual(3); // seeded "4 days ago at 10 am": 3 full days before 10 am
     expect(await checkInReply("e1", "Great week", false)).toEqual({ tip: null, openRequest: null });
   });
 
@@ -238,5 +249,55 @@ describe("AI helpers on the island (offline versions)", () => {
     store.addSolvedByGuide("Engineering", "vpn");
     expect(store.hrImpact("Engineering").solvedByGuide).toBe(1);
     expect(store.hrImpact("Marketing").solvedByGuide).toBe(0);
+  });
+});
+
+describe("Fixes from the code review", () => {
+  it("HR never gets employee IDs or the 'tell me' choice", () => {
+    expect(JSON.stringify(store.hrRequests())).not.toMatch(/employeeId/);
+    store.addCheckIn({ employeeId: "e2", team: "Engineering", week: 2, question: "q", mood: "stuck", note: "x", shareName: true, notifyMe: false });
+    expect(JSON.stringify(store.hrCheckIns())).not.toMatch(/notifyMe|employeeId/);
+  });
+
+  it("Re-analyse can't create the same follow-up twice", async () => {
+    store.setAnalysis(await analyse());
+    const t = store.hrAnalysis()!.themes[0];
+    store.addAction(t.id);
+    store.setAnalysis(await analyse()); // HR presses Re-analyse
+    const again = store.hrAnalysis()!.themes.find((x) => x.title === t.title && x.team === t.team)!;
+    expect(again.id).toBe(t.id); // same theme, same id
+    store.addAction(again.id);
+    expect(store.hrActions()).toHaveLength(1);
+  });
+
+  it("who gets told is fixed when the follow-up is created", async () => {
+    const a = await analyse();
+    store.setAnalysis(a);
+    const tools = find(a.themes, /tools/, "Engineering");
+    store.addAction(tools.id);
+    const before = store.hrActions()[0].peopleToTell;
+    // e2 later says "no updates" on an unrelated check-in: this follow-up still tells them
+    store.addCheckIn({ employeeId: "e2", team: "Engineering", week: 2, question: "q", mood: "great", note: "", shareName: false, notifyMe: false });
+    expect(store.hrActions()[0].peopleToTell).toBe(before);
+  });
+
+  it("reopening a request says 'open', not 'in progress'", () => {
+    const r = store.requests().find((x) => x.employeeId === "e2")!;
+    store.setRequestStatus(r.id, "open");
+    expect(store.myNotices("e2")[0].body).toMatch(/is now open\./);
+  });
+
+  it("'Delete my data' removes AI themes that could quote them", async () => {
+    store.setAnalysis(await analyse());
+    store.deleteMyData("e1"); // e1 contributed to the Engineering theme
+    expect(store.hrAnalysis()).toBeNull();
+  });
+
+  it("a manager view can never fall back to full HR data", async () => {
+    const { askAssistant } = await import("../src/main/assistant");
+    const r = await askAssistant([{ role: "user", text: "Which requests have waited longest?" }], { tab: "overview", team: "Marketing", role: "boss" as never });
+    expect(r.answer).not.toMatch(/Engineering|IDE|staging/i);
+    const all = await askAssistant([{ role: "user", text: "Summarise this week" }], { tab: "overview", team: "All", role: "manager" });
+    expect(all.answer).toMatch(/no data for this team/);
   });
 });

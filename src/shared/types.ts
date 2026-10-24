@@ -87,15 +87,16 @@ export type AskResult = {
 
 // ---------- Quick requests (IT / HR tickets) ----------
 
-export type RequestCategory = "software" | "hardware" | "access" | "leave" | "payroll" | "other";
+export type RequestCategory = "software" | "hardware" | "access" | "it-other" | "leave" | "payroll" | "other";
 
 export const REQUEST_CATEGORIES: { id: RequestCategory; label: string; dept: "IT" | "HR" }[] = [
   { id: "software", label: "Software or licence", dept: "IT" },
   { id: "access", label: "System access", dept: "IT" },
   { id: "hardware", label: "Laptop or hardware", dept: "IT" },
+  { id: "it-other", label: "Other IT issue", dept: "IT" },
   { id: "leave", label: "Leave", dept: "HR" },
   { id: "payroll", label: "Pay or claims", dept: "HR" },
-  { id: "other", label: "Something else", dept: "HR" },
+  { id: "other", label: "Other HR question", dept: "HR" },
 ];
 
 export type RequestStatus = "open" | "in_progress" | "resolved";
@@ -123,7 +124,8 @@ export type RequestInput = { category: RequestCategory; description: string };
 // ---------- AI helpers on the island (all from company data) ----------
 
 export type GuideTip = { id: string; title: string; from: string; answer: string; link?: string; linkLabel?: string };
-export type RequestSuggestion = { category: RequestCategory; tip: GuideTip | null; source: "openai" | "offline" };
+// askMore: the description is too vague to act on, so ask one short question (sending is still allowed)
+export type RequestSuggestion = { category: RequestCategory; tip: GuideTip | null; askMore: string | null; source: "openai" | "offline" };
 export type ColleagueSuggestion = { colleagueId: string; reason: string; source: "openai" | "offline" };
 export type CheckInReply = {
   tip: GuideTip | null;
@@ -206,6 +208,8 @@ export type PingInput = { colleagueId: string; message: string };
 // ---------- What HR is allowed to see (no employee IDs) ----------
 
 export type HrCheckIn = Omit<CheckIn, "employeeId" | "shareName" | "notifyMe"> & { name: string | null };
+// Requests carry the name (IT needs it) but never the internal employee ID
+export type HrRequest = Omit<SupportRequest, "employeeId">;
 export type HrAsk = { id: string; team: string; week: number; question: string; answered: boolean; topic: string | null; createdAt: string };
 
 // What WorkPalz has changed so far: proof the loop works
@@ -318,7 +322,7 @@ export type WorkPalzApi = {
   hrTeams: () => Promise<string[]>;
   hrCheckIns: () => Promise<HrCheckIn[]>;
   hrAsks: () => Promise<HrAsk[]>;
-  hrRequests: () => Promise<SupportRequest[]>;
+  hrRequests: () => Promise<HrRequest[]>;
   setRequestStatus: (id: string, status: RequestStatus) => Promise<void>;
   analyse: () => Promise<Analysis>;
   getLastAnalysis: () => Promise<Analysis | null>;

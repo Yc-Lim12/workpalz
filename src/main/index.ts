@@ -3,8 +3,8 @@ import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage,
 import fs from "node:fs";
 import path from "node:path";
 import type { Action, AssistantMessage, AssistantView, CheckInInput, HandbookInput, IslandStatus, Colleague, IslandEvent, IslandLayout, Ping, PingInput, RequestInput, RequestStatus, Shortcuts } from "../shared/types";
-import { DEFAULT_SHORTCUTS, DRAFT_PLACEHOLDER, GUIDE_SOURCES, NEGATIVE_MOODS, REQUEST_CATEGORIES } from "../shared/types";
-import { loadStore, resetStore, store } from "./store";
+import { DEFAULT_SHORTCUTS, DRAFT_PLACEHOLDER, GUIDE_SOURCES, MOODS, NEGATIVE_MOODS, REQUEST_CATEGORIES, STATUS_LABEL } from "../shared/types";
+import { loadStore, resetStore, store, storeGeneration } from "./store";
 import { analyse } from "./ai";
 import { answerQuestion } from "./ask";
 import { askAssistant, draftHandbookEntry } from "./assistant";
@@ -22,6 +22,7 @@ let dialogOpen = false;
 let islandInteractive = false; // true = the see-through island window is catching clicks
 let blurCount = 0; // for the end-to-end test
 let releasedFocusAt = 0;
+let quitting = false;
 
 let currentShortcuts: Shortcuts = { ...DEFAULT_SHORTCUTS };
 
@@ -84,6 +85,12 @@ function createIslandWindow() {
   // Anything waiting still shows as a number on the menu bar / tray icon.
   island.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
   island.setIgnoreMouseEvents(true, { forward: true });
+
+  // The island is part of the screen, not a document: Cmd+W must not destroy it
+  // (later shortcuts and tray clicks would crash on a destroyed window). Quitting still works.
+  island.on("close", (e) => {
+    if (!quitting) e.preventDefault();
+  });
 
   island.on("blur", () => {
     blurCount++;
@@ -253,8 +260,16 @@ function registerIpc() {
     if (/^https:\/\//.test(url)) shell.openExternal(url);
   });
 
-  ipcMain.on("island:set-shortcuts", (_e, shortcuts: Shortcuts) => {
-    currentShortcuts = shortcuts;
+  ipcMain.on("island:set-shortcuts", (_e, shortcuts: Partial<Shortcuts>) => {
+    // Only known keys, only text: a bad value must never wipe the other shortcuts
+    const next = { ...DEFAULT_SHORTCUTS };
+    if (shortcuts && typeof shortcuts === "object") {
+      for (const k of Object.keys(next) as (keyof Shortcuts)[]) {
+        const v = shortcuts[k];
+        if (typeof v === "string" && v.length <= 60 && v !== "Escape") next[k] = v;
+      }
+    }
+    currentShortcuts = next;
     applyShortcuts();
   });
 
@@ -262,6 +277,7 @@ function registerIpc() {
   ipcMain.handle("checkin:question", () => questionForWeek(me().week));
 
   ipcMain.handle("checkin:add", async (_e, input: CheckInInput) => {
+    if (!MOODS.some((x) => x.id === input?.mood)) throw new Error("Unknown mood");
     const m = me();
     const note = String(input.note ?? "").trim().slice(0, 280);
     store.addCheckIn({
@@ -279,7 +295,7 @@ function registerIpc() {
     return checkInReply(m.id, note, NEGATIVE_MOODS.includes(input.mood));
   });
 
-  ipcMain.handle("request:suggest", (_e, text: string) => suggestRequest(String(text ?? "")));
+  ipcMain.handle("request:suggest", (_e, text: string) => suggestRequest(String(text ?? ""), { selfHelpOnly: true }));
   ipcMain.handle("request:solved-by-guide", (_e, tipId: string) => {
     store.addSolvedByGuide(me().team, String(tipId ?? ""));
     broadcastChange();
@@ -288,7 +304,9 @@ function registerIpc() {
 
   ipcMain.handle("ask", async (_e, question: string) => {
     const q = String(question ?? "").trim().slice(0, 200);
+    const gen = storeGeneration();
     const { result, entryId } = await answerQuestion(q);
+    if (gen !== storeGeneration()) return result; // data was reset or deleted meanwhile: don't log it
     const m = me();
     store.addAsk({ employeeId: m.id, team: m.team, week: m.week, question: q, entryId, answered: result.answered });
     broadcastChange();
@@ -383,12 +401,16 @@ function registerIpc() {
   ipcMain.handle("hr:asks", () => store.hrAsks());
   ipcMain.handle("hr:requests", () => store.hrRequests());
   ipcMain.handle("hr:request-status", (_e, id: string, status: RequestStatus) => {
+    if (!(status in STATUS_LABEL)) throw new Error("Unknown status");
     store.setRequestStatus(id, status);
     broadcastChange();
   });
 
   ipcMain.handle("ai:analyse", async () => {
-    store.setAnalysis(await analyse());
+    const gen = storeGeneration();
+    const analysis = await analyse();
+    // A reset or "delete my data" during the (up to 30 s) AI call: don't bring their data back
+    if (gen === storeGeneration()) store.setAnalysis(analysis);
     broadcastChange();
     return store.hrAnalysis();
   });
@@ -400,6 +422,7 @@ function registerIpc() {
     broadcastChange();
   });
   ipcMain.handle("actions:status", (_e, id: string, status: Action["status"]) => {
+    if (status !== "open" && status !== "done") throw new Error("Unknown status");
     store.setActionStatus(id, status);
     broadcastChange();
   });
@@ -434,5 +457,6 @@ app.whenReady().then(() => {
   }
 });
 
+app.on("before-quit", () => (quitting = true));
 app.on("will-quit", () => globalShortcut.unregisterAll());
 app.on("window-all-closed", () => app.quit());

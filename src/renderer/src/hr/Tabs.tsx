@@ -15,6 +15,7 @@ import {
   type HrAsk,
   type HrCheckIn,
   type RequestStatus,
+  type HrRequest,
   type SupportRequest,
 } from "../../../shared/types";
 import { Button, C, Card, Chip, Empty, ago } from "./ui";
@@ -41,7 +42,7 @@ const STATUS_STYLE: Record<RequestStatus, { bg: string; fg: string }> = {
   resolved: { bg: "var(--hr-green-bg)", fg: "var(--hr-green-fg)" },
 };
 
-export function RequestsTab({ requests, onStatus }: { requests: SupportRequest[]; onStatus: (id: string, s: RequestStatus) => void }) {
+export function RequestsTab({ requests, onStatus }: { requests: HrRequest[]; onStatus: (id: string, s: RequestStatus) => void }) {
   const sorted = [...requests].sort((a, b) => (a.status === "resolved" ? 1 : 0) - (b.status === "resolved" ? 1 : 0) || b.createdAt.localeCompare(a.createdAt));
   return (
     <div className="flex flex-col gap-5">
@@ -73,7 +74,7 @@ export function RequestsTab({ requests, onStatus }: { requests: SupportRequest[]
   );
 }
 
-function RequestRow({ r, onStatus }: { r: SupportRequest; onStatus: (id: string, s: RequestStatus) => void }) {
+function RequestRow({ r, onStatus }: { r: HrRequest; onStatus: (id: string, s: RequestStatus) => void }) {
   const id = useId();
   const cat = REQUEST_CATEGORIES.find((c) => c.id === r.category);
   return (
@@ -121,10 +122,15 @@ function RequestRow({ r, onStatus }: { r: SupportRequest; onStatus: (id: string,
 // Group questions that use the same key words ("staging server access" ≈ "how do I get access to the staging server")
 const STOP = new Set("a an the is are do does i me my to of for in on at and or how what who where when which can get please".split(" "));
 const words = (s: string) => new Set(s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w && !STOP.has(w)));
-const similar = (a: Set<string>, b: Set<string>) => {
+const similar = (a: Set<string>, b: Set<string>, ta: string, tb: string) => {
+  // No usable words (e.g. "How do I?", or not written in English letters): group exact repeats only
+  if (!a.size || !b.size) return ta.trim().toLowerCase() === tb.trim().toLowerCase();
   const shared = [...a].filter((w) => b.has(w)).length;
   return shared / Math.max(1, new Set([...a, ...b]).size) >= 0.5;
 };
+
+// After a panel closes, put keyboard focus somewhere sensible instead of the top of the page
+const focusSoon = (id: string) => window.setTimeout(() => document.getElementById(id)?.focus(), 0);
 
 type Gap = { text: string; key: Set<string>; count: number; teams: Set<string>; last: string; ids: string[]; questions: Set<string> };
 
@@ -145,7 +151,7 @@ export function QuestionsTab({
   const groups: Gap[] = [];
   for (const a of [...asks].filter((x) => !x.answered).sort((x, y) => x.createdAt.localeCompare(y.createdAt))) {
     const key = words(a.question);
-    let g = groups.find((x) => similar(x.key, key));
+    let g = groups.find((x) => similar(x.key, key, x.text, a.question));
     if (!g) {
       g = { text: a.question, key, count: 0, teams: new Set<string>(), last: a.createdAt, ids: [], questions: new Set<string>() };
       groups.push(g);
@@ -170,7 +176,7 @@ export function QuestionsTab({
       />
       <div className="flex flex-wrap gap-4">
         <Card as="section" className="flex min-w-0 flex-[2_1_420px] flex-col gap-3">
-          <h2 className="m-0 text-[16px] font-bold">Not in the company guide</h2>
+          <h2 id="gaps-title" tabIndex={-1} className="m-0 text-[16px] font-bold outline-none">Not in the company guide</h2>
           {gapList.length === 0 ? (
             <p className="m-0 text-[14px]" style={{ color: C.muted }}>
               Every question was answered.
@@ -178,7 +184,7 @@ export function QuestionsTab({
           ) : (
             <ul className="m-0 flex list-none flex-col p-0">
               {gapList.map((g) => (
-                <li key={g.text} className="flex flex-col gap-3 border-t border-[color:var(--hr-line-soft)] py-3 first:border-0 first:pt-0">
+                <li key={g.ids[0]} className="flex flex-col gap-3 border-t border-[color:var(--hr-line-soft)] py-3 first:border-0 first:pt-0">
                   <div className="flex flex-wrap items-center gap-3">
                     <span className="flex-1 text-[14px] font-semibold">{g.text}</span>
                     <span className="text-[13px]" style={{ color: C.muted }}>
@@ -187,20 +193,24 @@ export function QuestionsTab({
                     <Chip bg={g.count > 1 ? "var(--hr-amber-bg)" : "var(--hr-neutral-bg)"} fg={g.count > 1 ? "var(--hr-amber-fg)" : "var(--hr-neutral-fg)"}>
                       Asked {g.count}×
                     </Chip>
-                    {onDraft && editing !== g.text && (
-                      <Button variant="muted" className="!min-h-9 !px-3 text-[13px]" onClick={() => setEditing(g.text)}>
+                    {onDraft && editing !== g.ids[0] && (
+                      <Button id={`draft-${g.ids[0]}`} variant="muted" className="!min-h-9 !px-3 text-[13px]" onClick={() => setEditing(g.ids[0])}>
                         <span aria-hidden="true">✦ </span>Draft answer with AI
                       </Button>
                     )}
                   </div>
-                  {onDraft && onPublish && editing === g.text && (
+                  {onDraft && onPublish && editing === g.ids[0] && (
                     <GapEditor
                       gap={g}
                       onDraft={onDraft}
-                      onCancel={() => setEditing(null)}
+                      onCancel={() => {
+                        setEditing(null);
+                        focusSoon(`draft-${g.ids[0]}`); // back to the button that opened it
+                      }}
                       onPublish={async (input) => {
                         await onPublish(input);
                         setEditing(null);
+                        focusSoon("gaps-title"); // the row is gone (answered): go to the list heading
                       }}
                     />
                   )}
@@ -303,7 +313,7 @@ function GapEditor({
         <p className="m-0 flex-1 text-[13.5px]" style={{ color: C.blueText }}>
           The AI writes a first draft from {gap.questions.size === 1 ? "this question" : `these ${gap.questions.size} questions`}. It never makes up company facts: those are left as [HR: …] for you to fill in.
         </p>
-        <Button onClick={run} disabled={busy}>
+        <Button autoFocus onClick={run} disabled={busy}>
           {busy ? "Drafting…" : "Draft it"}
         </Button>
         <Button variant="ghost" onClick={onCancel}>
@@ -352,7 +362,7 @@ function GapEditor({
         <label htmlFor={`${id}-title`} className="text-[13px] font-semibold">
           Title
         </label>
-        <input id={`${id}-title`} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} className={`${field} min-h-11`} />
+        <input id={`${id}-title`} autoFocus value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} className={`${field} min-h-11`} />
       </div>
       <div className="flex flex-col gap-1.5">
         <label htmlFor={`${id}-answer`} className="text-[13px] font-semibold">

@@ -159,13 +159,28 @@ await island.getByRole("button", { name: "Continue" }).click();
 await island.getByText(/Goes to:/).waitFor();
 check("Changing the problem checks again: hardware", (await island.locator(".island-shell").innerText()).includes("Goes to: IT · Laptop or hardware"));
 await island.getByRole("button", { name: /Change where it goes/ }).click();
-check("Change shows all the options", (await island.getByRole("radio").count()) === 6);
+check("Change shows all the options", (await island.getByRole("radio").count()) === 7);
 await island.getByRole("radio", { name: "Laptop or hardware" }).check({ force: true });
 await shot(island, "request-form");
 await island.getByRole("button", { name: /Send to IT/ }).click();
 await settle(400);
-await shot(island, "request-sent");
 check("Sent flash says who has it", (await island.locator(".island-shell").innerText()).includes("Sent to IT"));
+await island.waitForTimeout(3200);
+
+// Quick action: tap a category, add a line, send (no typing first, no AI wait)
+await openMenu();
+await island.getByRole("button", { name: /Quick request/ }).click();
+await settle();
+await island.getByRole("button", { name: "Pay or claims" }).click();
+check("Quick action goes straight to HR", (await island.locator(".island-shell").innerText()).includes("Goes to: HR · Pay or claims"));
+await island.locator("#rq-desc").fill("Taxi claim from last week not paid yet");
+check("Typing after a quick action keeps the choice", (await island.locator(".island-shell").innerText()).includes("Goes to: HR · Pay or claims"));
+await shot(island, "request-quick-action");
+await axe(island, "island quick action");
+await island.getByRole("button", { name: /Send to HR/ }).click();
+await settle(400);
+await shot(island, "request-sent");
+check("Quick action request sent to HR", (await island.locator(".island-shell").innerText()).includes("Sent to HR"));
 await island.waitForTimeout(3200);
 
 // Weekly check-in
@@ -390,7 +405,7 @@ await hr.getByRole("button", { name: /^Requests/ }).click();
 await hr.waitForTimeout(300);
 await shot(hr, "hr-requests", null);
 await axe(hr, "HR requests");
-await hr.getByLabel("Status for Mei Ling Chew's request").selectOption("resolved");
+await hr.getByLabel("Status for Mei Ling Chew's request").first().selectOption("resolved"); // she has two now
 await island.getByText("Request resolved").waitFor({ timeout: 4000 });
 await settle(500);
 await shot(island, "island-request-resolved");

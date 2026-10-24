@@ -14,14 +14,15 @@ const daysAgo = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(i
 const dept = (category: string) => REQUEST_CATEGORIES.find((c) => c.id === category);
 
 function snapshot(view: AssistantView) {
-  const manager = view.role === "manager";
+  // Fail closed: anything but an exact "hr" gets the limited manager view of one real team
+  const manager = view.role !== "hr";
   const mine = <T extends { team: string }>(x: T) => !manager || x.team === view.team;
   const teams = manager ? store.hrTeams().filter((t) => t === view.team) : store.hrTeams();
   const analysis = store.hrAnalysis();
   return {
     today: new Date().toDateString(),
     stats: Object.fromEntries((manager ? teams : ["All", ...teams]).map((t) => [t, store.hrStats(t)])),
-    impact: store.hrImpact(manager ? view.team : "All"),
+    impact: manager ? (teams.length ? store.hrImpact(teams[0]) : null) : store.hrImpact("All"),
     themes: (analysis?.themes ?? []).filter(mine).map((t) => ({
       title: t.title,
       team: t.team,
@@ -116,6 +117,7 @@ function answerOffline(question: string, view: AssistantView, d: Snapshot): Assi
   const inTeam = <T extends { team: string }>(x: T) => team === "All" || x.team === team;
   const where = team === "All" ? "across all teams" : `in ${team}`;
   const s = d.stats[team] ?? d.stats.All ?? Object.values(d.stats)[0];
+  if (!s) return { answer: "There's no data for this team.", suggestions: [], source: "offline" };
   const hr = view.role === "hr";
   const lines: string[] = [];
 
