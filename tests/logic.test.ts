@@ -478,3 +478,13 @@ describe('"Did this help?" after a follow-up', () => {
     expect(store.hrActions()[0].results?.notReally).toBe(0);
   });
 });
+
+describe("AI theme text", () => {
+  it("never shows the private person codes", async () => {
+    const { noCodes } = await import("../src/main/ai");
+    expect(noCodes("Document the priority, then review them with P4 and P5 this week.")).toBe("Document the priority, then review them this week.");
+    expect(noCodes("Three people (P1, P2, P3) are blocked.")).toBe("Three people are blocked.");
+    expect(noCodes("P2 has no laptop")).toBe("a new hire has no laptop");
+    expect(noCodes("Waiting on tools, licences or access")).toBe("Waiting on tools, licences or access");
+  });
+});

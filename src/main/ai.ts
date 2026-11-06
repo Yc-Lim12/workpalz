@@ -76,6 +76,18 @@ export async function analyse(): Promise<InternalAnalysis> {
   return { generatedAt: new Date().toISOString(), source: "offline", themes: analyseOffline(thisWeek, lastWeek, employees) };
 }
 
+// The AI gets "P1, P2…" instead of names only to count people. If a code slips into the text
+// ("review them with P4 and P5") it points at individuals, so it's removed.
+export function noCodes(text: string) {
+  return text
+    .replace(/\s*\((?:P\d+(?:\s*(?:,|and|&)\s*)?)+\)/g, "") // "(P1, P2)"
+    .replace(/\s+(?:with|for|from|by|to|and)\s+(?:P\d+(?:\s*(?:,|and|&)\s*)?)+(?=[\s.,;:!?)]|$)/gi, "") // "with P4 and P5"
+    .replace(/\bP\d+\b/g, "a new hire")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .trim();
+}
+
 // Same team + title = same theme across analyses, so follow-ups stay matched after Re-analyse
 const themeId = (team: string, title: string) =>
   `${team}:${title}`.toLowerCase().replace(/[^a-z0-9:]+/g, "-").replace(/^-|-$/g, "");
@@ -126,6 +138,7 @@ Group THIS WEEK's signals into recurring themes per team. Rules:
 - "people" = the person codes (this week only) behind the theme.
 - "lastWeekPeople" = how many different people in that team had the same problem last week.
 - Describe the work problem only. Never guess emotions, personality or performance.
+- Never mention person codes (P1, P2, …) in any text: they are only for counting people.
 - "suggestedAction" = one concrete step HR, IT or the manager can take this week.
 - "evidence" = up to 3 items copied exactly from the signals, mixing sources where possible.
 - Titles: short and plain, e.g. "Waiting on tools, licences or access".
@@ -146,15 +159,15 @@ Return JSON only: {"themes":[{"title":string,"team":string,"people":string[],"la
       const themeSignals = thisWeek.filter((s) => contributorIds.includes(s.employeeId));
       return {
         id: themeId(team, String(t.title)),
-        title: String(t.title),
+        title: noCodes(String(t.title)),
         team,
         affected,
         teamSize,
         lastWeekAffected,
         severity: severityFor(affected, teamSize, lastWeekAffected),
-        summary: String(t.summary ?? ""),
-        evidence: (t.evidence ?? []).slice(0, 3).map((e) => ({ source: e.source, text: String(e.text) })),
-        suggestedAction: String(t.suggestedAction ?? ""),
+        summary: noCodes(String(t.summary ?? "")),
+        evidence: (t.evidence ?? []).slice(0, 3).map((e) => ({ source: e.source, text: noCodes(String(e.text)) })),
+        suggestedAction: noCodes(String(t.suggestedAction ?? "")),
         sources: countSources(themeSignals),
         contributorIds,
       };
