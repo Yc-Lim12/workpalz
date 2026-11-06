@@ -5,8 +5,8 @@ WorkPalz has three levels of automated testing, plus a manual check before demo 
 | Level | Command | Time | What it answers |
 |---|---|---|---|
 | 1. Typecheck | `npm run typecheck` | ~5 s | Does the code make sense? |
-| 2. Unit tests | `npm test` | ~1 s | Is the logic right? (28 tests) |
-| 3. End-to-end | `npm run build && npm run test:e2e` | ~1.5 min | Does the real app work? (99 checks) |
+| 2. Unit tests | `npm test` | ~1 s | Is the logic right? (44 tests) |
+| 3. End-to-end | `npm run build && npm run test:e2e` | ~1.5 min | Does the real app work? (126 checks) |
 | 4. Manual demo run | see below | ~5 min | Does it look and feel right? |
 
 ## 1. Typecheck
@@ -23,7 +23,7 @@ TypeScript reads all the code without running it and catches mistakes such as a 
 npm test
 ```
 
-28 tests in [tests/logic.test.ts](tests/logic.test.ts) check the app's logic without opening any window. They always use the offline AI.
+44 tests in [tests/logic.test.ts](tests/logic.test.ts) check the app's logic without opening any window. They always use the offline AI.
 
 | Area | What's checked |
 |---|---|
@@ -38,8 +38,11 @@ npm test
 | Impact | Resolved requests, closed company guide gaps and "fixed without a ticket" are counted correctly |
 | Code review fixes | HR never gets employee IDs or the "tell me" choice; Re-analyse can't create a follow-up twice; who gets told is fixed when the follow-up is made; reopened requests say "open"; "Delete my data" removes themes that could quote them; a manager view can't fall back to full HR data |
 | Island AI helpers | Smart request picks the category and a guide answer; "Who can help?" picks the right colleague; a stuck check-in gets a tip and the related request status |
+| Check-in questions (set by HR) | One question per week, belonging from week 3, clean question and answer sets, a set in use can't be removed, what a choice *means* drives the themes, old answers keep their wording |
+| "Did the fix help?" | Only people who were told are asked, once the fix is done; half or more saying no puts it back on HR's list; after a second failed try WorkPalz offers a person; Impact counts fixes that worked |
+| AI privacy | Theme text never shows the private person codes (P1, P2…) |
 
-**Pass = "28 passed".**
+**Pass = "44 passed".**
 
 ## 3. End-to-end test
 
@@ -82,7 +85,7 @@ npm run test:e2e
 
 ### What you get
 
-- `PASS` or `FAIL` for each check, ending with **"99/99 checks passed"**
+- `PASS` or `FAIL` for each check, ending with **"126/126 checks passed"**
 - A screenshot of every screen in `tests/e2e/shots/` (handy for pitch slides; not committed to git)
 - Full results, including any accessibility problems, in `tests/e2e/shots/results.json`
 
