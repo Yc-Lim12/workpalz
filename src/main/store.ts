@@ -8,8 +8,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
+  FALLBACK_QUESTION,
   guideLabel,
+  MOODS,
   NEGATIVE_MOODS,
+  ONBOARDING_WEEKS,
   STATUS_LABEL,
   type Action,
   type Analysis,
@@ -17,10 +20,12 @@ import {
   type HandbookEntry,
   type HandbookInput,
   type CheckIn,
+  type CheckInQuestion,
   type Employee,
   type HrAsk,
   type HrCheckIn,
   type HrImpact,
+  type HrQuestionStats,
   type HrRequest,
   type HrStats,
   type Mood,
@@ -30,7 +35,7 @@ import {
   type SupportRequest,
   type Theme,
 } from "../shared/types";
-import { COLLEAGUES, EMPLOYEES, seedAsks, seedCheckIns, seedRequests } from "./seed";
+import { COLLEAGUES, DEFAULT_QUESTIONS, EMPLOYEES, questionForWeek, seedAsks, seedCheckIns, seedRequests } from "./seed";
 import { HANDBOOK } from "./handbook";
 
 // Internal versions keep who contributed, so we can notify them later.
@@ -52,6 +57,7 @@ type Data = {
   pings: Ping[];
   handbook: HandbookEntry[]; // entries HR added to fill gaps
   solvedByGuide: { team: string; tipId: string; at: string }[]; // "That fixed it", no ticket needed
+  questions: CheckInQuestion[]; // the weekly check-in questions HR set
   analysis: InternalAnalysis | null;
 };
 
@@ -78,6 +84,7 @@ function fresh(): Data {
     pings: [],
     handbook: [],
     solvedByGuide: [],
+    questions: DEFAULT_QUESTIONS.map((q) => ({ ...q, weeks: [...q.weeks] })),
     analysis: null,
   };
 }
@@ -107,9 +114,11 @@ export function loadStore() {
     data.pings ??= [];
     data.handbook ??= [];
     data.solvedByGuide ??= [];
+    data.questions ??= f.questions;
     data.analysis ??= null;
     for (const a of data.actions) a.contributorIds ??= [];
     for (const t of data.analysis?.themes ?? []) t.contributorIds ??= [];
+    for (const c of data.checkIns) c.questionId ??= data.questions.find((q) => q.text === c.question)?.id;
   } catch {
     // Unreadable: keep a copy instead of silently overwriting it, then start fresh
     if (raw !== null) {
@@ -130,6 +139,31 @@ export function resetStore() {
   generation++;
   data = fresh();
   save();
+}
+
+const MAX_QUESTIONS = 50;
+
+// Only clean questions get saved: real text, real weeks, and each week in one question at most
+// (if two claim a week, the first keeps it)
+function cleanQuestions(input: unknown): CheckInQuestion[] {
+  if (!Array.isArray(input)) throw new Error("Questions must be a list");
+  const taken = new Set<number>();
+  const ids = new Set<string>();
+  const out: CheckInQuestion[] = [];
+  for (const raw of input.slice(0, MAX_QUESTIONS)) {
+    const text = String(raw?.text ?? "").trim().replace(/\s+/g, " ").slice(0, 140);
+    if (!text) throw new Error("Every question needs some text");
+    const weeks = (Array.isArray(raw?.weeks) ? raw.weeks : [])
+      .map(Number)
+      .filter((w: number) => Number.isInteger(w) && w >= 1 && w <= ONBOARDING_WEEKS && !taken.has(w));
+    const unique = [...new Set<number>(weeks)].sort((a, b) => a - b);
+    unique.forEach((w) => taken.add(w));
+    let id = typeof raw?.id === "string" && /^[\w-]{1,40}$/.test(raw.id) && raw.id !== FALLBACK_QUESTION.id ? raw.id : randomUUID();
+    if (ids.has(id)) id = randomUUID();
+    ids.add(id);
+    out.push({ id, text, weeks: unique });
+  }
+  return out;
 }
 
 const strip = <T extends { contributorIds: string[] }>({ contributorIds: _c, ...rest }: T) => rest;
@@ -174,6 +208,14 @@ export const store = {
     Object.assign(existing, { ...c, createdAt: now() });
     save();
     return { updated: true };
+  },
+
+  // ----- check-in questions -----
+  questions: () => data.questions,
+  questionFor: (week: number) => questionForWeek(week, data.questions),
+  setQuestions(input: unknown) {
+    data.questions = cleanQuestions(input);
+    save();
   },
 
   addAsk(a: Omit<Ask, "id" | "createdAt">) {
@@ -325,6 +367,37 @@ export const store = {
       unanswered: asks.filter((a) => !a.answered).length,
       questions: asks.length,
     };
+  },
+
+  // Per question: how many answered and how it felt. Counts only, never who.
+  hrQuestionStats(team: string): HrQuestionStats[] {
+    const inTeam = <T extends { team: string }>(x: T) => team === "All" || x.team === team;
+    const struggling = (cs: CheckIn[]) => cs.filter((c) => NEGATIVE_MOODS.includes(c.mood)).length;
+    return [...data.questions, FALLBACK_QUESTION]
+      .map((q) => {
+        const answers = data.checkIns.filter((c) => inTeam(c) && c.questionId === q.id);
+        const moodCounts = Object.fromEntries(MOODS.map((m) => [m.id, 0])) as Record<Mood, number>;
+        for (const c of answers) moodCounts[c.mood]++;
+        // The team where this question goes worst, when HR is looking at every team
+        let hardestTeam: HrQuestionStats["hardestTeam"] = null;
+        if (team === "All") {
+          for (const t of new Set(answers.map((c) => c.team))) {
+            const inT = answers.filter((c) => c.team === t);
+            const s = struggling(inT);
+            if (s && (!hardestTeam || s / inT.length > hardestTeam.struggling / hardestTeam.answers)) hardestTeam = { team: t, struggling: s, answers: inT.length };
+          }
+        }
+        return {
+          ...q,
+          answers: answers.length,
+          people: new Set(answers.map((c) => c.employeeId)).size,
+          thisWeek: answers.filter((c) => inLastWeek(c.createdAt)).length,
+          struggling: struggling(answers),
+          moodCounts,
+          hardestTeam,
+        };
+      })
+      .filter((q) => q.id !== FALLBACK_QUESTION.id || q.answers > 0); // the fallback only shows once it was used
   },
 
   hrImpact(team: string): HrImpact {

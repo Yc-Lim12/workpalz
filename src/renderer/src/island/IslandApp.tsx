@@ -234,6 +234,7 @@ export default function IslandApp() {
     const stop = api.onDataChanged(() => {
       refresh();
       api.getMe().then(setMe);
+      api.getQuestion().then(setQuestion); // HR may have changed this week's question
     });
     return () => {
       window.clearTimeout(tour);

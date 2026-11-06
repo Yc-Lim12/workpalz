@@ -46,6 +46,8 @@ const api: WorkPalzApi = {
   hrImpact: call("hr:impact"),
   hrTeams: call("hr:teams"),
   hrCheckIns: call("hr:checkins"),
+  hrQuestions: call("hr:questions"),
+  saveQuestions: call("hr:questions-save"),
   hrAsks: call("hr:asks"),
   hrRequests: call("hr:requests"),
   setRequestStatus: call("hr:request-status"),

@@ -1,7 +1,7 @@
 // HR dashboard shell: header, navigation, team filter, live data and announcements.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { guideLabel } from "../../../shared/types";
-import type { Action, Analysis, HandbookEntry, HandbookInput, HrAsk, HrImpact, HrCheckIn, HrRequest, HrStats, RequestStatus, Theme } from "../../../shared/types";
+import type { Action, Analysis, CheckInQuestion, HandbookEntry, HandbookInput, HrAsk, HrImpact, HrCheckIn, HrQuestionStats, HrRequest, HrStats, RequestStatus, Theme } from "../../../shared/types";
 import Assistant from "./Assistant";
 import Overview from "./Overview";
 import { CheckInsTab, FollowUpsTab, QuestionsTab, RequestsTab } from "./Tabs";
@@ -21,6 +21,7 @@ export default function HrDashboard() {
   const [stats, setStats] = useState<HrStats | null>(null);
   const [impact, setImpact] = useState<HrImpact | null>(null);
   const [checkIns, setCheckIns] = useState<HrCheckIn[]>([]);
+  const [questions, setQuestions] = useState<HrQuestionStats[]>([]);
   const [asks, setAsks] = useState<HrAsk[]>([]);
   const [requests, setRequests] = useState<HrRequest[]>([]);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
@@ -46,11 +47,12 @@ export default function HrDashboard() {
 
   const refresh = useCallback(async () => {
     const call = ++refreshCall.current;
-    const [tm, st, im, c, a, r, an, ac, hb] = await Promise.all([
+    const [tm, st, im, c, q, a, r, an, ac, hb] = await Promise.all([
       api.hrTeams(),
       api.hrStats(team),
       api.hrImpact(team),
       api.hrCheckIns(),
+      api.hrQuestions(team),
       api.hrAsks(),
       api.hrRequests(),
       api.getLastAnalysis(),
@@ -62,6 +64,7 @@ export default function HrDashboard() {
     setStats(st);
     setImpact(im);
     setCheckIns(c);
+    setQuestions(q);
     setAsks(a);
     setRequests(r);
     setAnalysis(an);
@@ -131,6 +134,11 @@ export default function HrDashboard() {
   const publishHandbook = async (input: HandbookInput) => {
     const n = await api.publishHandbook(input);
     say(`Added to the ${guideLabel(input.place)}. ${n} new hire${n === 1 ? " was" : "s were"} told their question now has an answer.`);
+  };
+
+  const saveQuestions = async (q: CheckInQuestion[], done: string) => {
+    await api.saveQuestions(q);
+    say(done);
   };
 
   const ALL_NAV: { id: Tab; label: string; badge?: number; hrOnly?: boolean }[] = [
@@ -280,7 +288,7 @@ export default function HrDashboard() {
           />
         )}
         {tab === "followups" && <FollowUpsTab actions={actions.filter(inTeam)} onStatus={setActionStatus} />}
-        {tab === "checkins" && <CheckInsTab checkIns={checkIns.filter(inTeam)} />}
+        {tab === "checkins" && <CheckInsTab checkIns={checkIns.filter(inTeam)} questions={questions} onSaveQuestions={saveQuestions} />}
       </main>
 
 

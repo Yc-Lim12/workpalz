@@ -312,3 +312,42 @@ describe("Weekly check-in", () => {
     expect(store.myCheckInThisWeek("e5")?.mood).toBe("great");
   });
 });
+
+describe("Check-in questions HR sets", () => {
+  it("asks about belonging from week 3, not only at the end", () => {
+    expect(store.questionFor(3).id).toBe("belonging");
+    expect(store.questionFor(2).id).toBe("tools");
+  });
+
+  it("saves clean questions only: one question per week, real weeks, real text", () => {
+    store.setQuestions([
+      { id: "a", text: "  First   question ", weeks: [2, 1, 1, 13, 0, 2.5] },
+      { id: "a", text: "Second", weeks: [2, 3] }, // week 2 is already taken; duplicate id gets a new one
+    ]);
+    const [a, b] = store.questions();
+    expect(a).toEqual({ id: "a", text: "First question", weeks: [1, 2] });
+    expect(b.weeks).toEqual([3]);
+    expect(b.id).not.toBe("a");
+    expect(() => store.setQuestions([{ id: "x", text: "   ", weeks: [1] }])).toThrow();
+    expect(() => store.setQuestions("nope")).toThrow();
+  });
+
+  it("a week without a question gets the general one", () => {
+    store.setQuestions([{ id: "tools", text: "Tools?", weeks: [1] }]);
+    expect(store.questionFor(5).text).toBe("How is your week going?");
+  });
+
+  it("stats count answers per question, by team, with no IDs or notes", () => {
+    store.setQuestions([{ id: "belonging", text: "Do you feel part of the team?", weeks: [2] }]);
+    const q = store.questionFor(2);
+    const before = store.hrQuestionStats("All").find((s) => s.id === "belonging")!;
+    store.saveMyCheckIn({ employeeId: "e5", team: "Engineering", week: 2, question: q.text, questionId: q.id, mood: "stuck", note: "Don't know anyone yet", shareName: false, notifyMe: true });
+    const all = store.hrQuestionStats("All").find((s) => s.id === "belonging")!;
+    expect(all.answers).toBe(before.answers + 1);
+    expect(all.thisWeek).toBe(before.thisWeek + 1);
+    expect(all.struggling).toBe(before.struggling + 1);
+    expect(all.hardestTeam?.team).toBe("Engineering");
+    expect(JSON.stringify(store.hrQuestionStats("All"))).not.toMatch(/e5|Don't know anyone/);
+    expect(store.hrQuestionStats("Finance").find((s) => s.id === "belonging")!.thisWeek).toBe(0);
+  });
+});

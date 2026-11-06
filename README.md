@@ -17,7 +17,7 @@ New employees often struggle quietly in their first months: missing tools, uncle
   Works like a search box: an × clears the question and the old answer, the first `Esc` clears and the second closes, and **recent questions** are listed to ask again (kept on that computer only; removed by "Delete my data").
 - **Smart Quick request** (hybrid AI): describe the problem in your own words, or tap a **quick button** (Laptop or hardware, Pay or claims, …) and just add a line. One screen shows a matching answer from the company guide ("That fixed it" = no ticket needed) and where the request goes ("Goes to: IT · System access", picked for you, with Change); if you're still stuck, press "Send to IT". Vague requests ("I want to submit an IT ticket") get one short question first. Track status afterwards.
 - **Ping a colleague**: search by name or topic ("VPN", "staging server"), or describe the problem and press **✦ Who can help with this?** (AI suggests the right person). See who's available and ask them for help. Only the colleague sees it, never HR.
-- **Weekly check-in**: one tap plus an optional note, once a week (checking in again that week changes the answer, so HR counts it once). The question changes with the onboarding stage. Anonymous to HR by default, with a choice to hear back if HR acts on it (see below). If you say you're stuck, WorkPalz gives something back straight away (AI): a matching guide answer and the status of your related open request.
+- **Weekly check-in**: one tap plus an optional note, once a week (checking in again that week changes the answer, so HR counts it once). The question changes with the onboarding stage (HR sets which question each week gets; "Do you feel part of the team?" is asked from week 3). Anonymous to HR by default, with a choice to hear back if HR acts on it (see below). If you say you're stuck, WorkPalz gives something back straight away (AI): a matching guide answer and the status of your related open request.
 - **Focus timer**: 25-minute focus session shown in the pill.
 - **Updates**: the island tells you when HR fixes something you raised, when a question you asked gets an answer in the company guide, or when a colleague replies.
 - **Welcome tour**: on the first day the island opens itself once and shows how to open it, how it stays out of the way and how anonymity works. Replay it from Settings.
@@ -37,6 +37,7 @@ New employees often struggle quietly in their first months: missing tools, uncle
 - **Ask AI**: one assistant on every page that knows the whole dashboard. Ask "Which team needs help most?" or "Summarise this week for managers".
 - **Fill gaps in the company guide with AI**: for questions the guide couldn't answer, the AI drafts an entry and suggests where it belongs (formal policy goes in the Employee Handbook, server access in the IT Help Centre, jargon in the Team Glossary); HR can change it. Anything company-specific is left as `[HR: …]`, and publishing stays locked until HR fills it in. Publishing updates Ask WorkPalz straight away and tells everyone who asked.
 - **Manager view**: a team manager sees only their own team, as patterns. No check-in notes, quotes or single requests. Their AI assistant gets the same limited data.
+- **Check-in questions** (Check-ins → Questions & results): a 12-week **schedule** where each week's question is one dropdown, and a question list where HR adds, edits and removes questions in place (search and sort once the list grows). Each question shows its answers and how many are struggling; open it for the mood breakdown and which team finds it hardest. Counts only.
 - **Requests** board, **Questions** (company guide gaps + popular topics), **Check-ins** history, team filter, light and dark mode.
 
 ## Responsible AI and privacy
@@ -76,8 +77,8 @@ Without a key, WorkPalz uses its offline analyser, company guide search and simp
 | Command | What it does |
 |---|---|
 | `npm run dev` | Run the app |
-| `npm test` | Run the logic tests (28) |
-| `npm run build && npm run test:e2e` | Drive the real app through every feature, screenshot it and run a WCAG scan on every screen (99 checks) |
+| `npm test` | Run the logic tests (32) |
+| `npm run build && npm run test:e2e` | Drive the real app through every feature, screenshot it and run a WCAG scan on every screen (108 checks) |
 | `npm run typecheck` | TypeScript check |
 | `npm run dist:win` | Build a Windows installer (run on Windows) |
 | `npm run dist:mac` | Build a macOS .dmg |

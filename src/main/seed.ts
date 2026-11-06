@@ -1,5 +1,5 @@
 // Fictional demo data for "Lumora Tech". No real people.
-import type { Ask, CheckIn, Colleague, Employee, Mood, RequestCategory, RequestStatus, SupportRequest } from "../shared/types";
+import { FALLBACK_QUESTION, type Ask, type CheckIn, type CheckInQuestion, type Colleague, type Employee, type Mood, type RequestCategory, type RequestStatus, type SupportRequest } from "../shared/types";
 
 export const ME_ID = "e5"; // the employee using the island in the demo
 
@@ -26,13 +26,17 @@ export const COLLEAGUES: Colleague[] = [
   { id: "p6", name: "Marcus Tan", role: "Finance Analyst", team: "Finance", helpsWith: ["Expense claims", "Payroll", "Month-end"], availability: "available" },
 ];
 
-// The weekly question changes with the onboarding stage
-export function questionForWeek(week: number): string {
-  if (week <= 2) return "Do you have the tools and access you need this week?";
-  if (week <= 4) return "How clear are your priorities right now?";
-  if (week <= 8) return "Are you getting enough feedback from your manager?";
-  return "Do you feel part of the team?";
-}
+// The weekly question changes with the onboarding stage. HR can change these on the Check-ins tab.
+// Belonging is asked from week 3, not left until the end: losing connection shows early.
+export const DEFAULT_QUESTIONS: CheckInQuestion[] = [
+  { id: "tools", text: "Do you have the tools and access you need this week?", weeks: [1, 2] },
+  { id: "belonging", text: "Do you feel part of the team?", weeks: [3, 8, 9, 10, 11, 12] },
+  { id: "priorities", text: "How clear are your priorities right now?", weeks: [4, 5] },
+  { id: "feedback", text: "Are you getting enough feedback from your manager?", weeks: [6, 7] },
+];
+
+export const questionForWeek = (week: number, questions = DEFAULT_QUESTIONS): CheckInQuestion =>
+  questions.find((q) => q.weeks.includes(week)) ?? FALLBACK_QUESTION;
 
 const daysAgo = (d: number, hour = 15) => {
   const t = new Date();
@@ -73,12 +77,14 @@ export function seedCheckIns(): CheckIn[] {
   return CHECKINS.map(([employeeId, d, mood, note, shareName], i) => {
     const e = emp(employeeId);
     const week = d >= 7 ? Math.max(1, e.week - 1) : e.week;
+    const q = questionForWeek(week);
     return {
       id: `c${i}`,
       employeeId,
       team: e.team,
       week,
-      question: questionForWeek(week),
+      question: q.text,
+      questionId: q.id,
       mood,
       note,
       shareName,

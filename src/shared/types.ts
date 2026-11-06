@@ -21,12 +21,19 @@ export type Employee = {
   week: number; // onboarding week, 1–12
 };
 
+// HR decides which question each onboarding week gets. A week belongs to one question at most.
+export const ONBOARDING_WEEKS = 12;
+export type CheckInQuestion = { id: string; text: string; weeks: number[] };
+// Asked in a week HR left without a question
+export const FALLBACK_QUESTION: CheckInQuestion = { id: "general", text: "How is your week going?", weeks: [] };
+
 export type CheckIn = {
   id: string;
   employeeId: string;
   team: string;
   week: number;
-  question: string;
+  question: string; // the wording they saw, kept even if HR edits the question later
+  questionId?: string; // older saved check-ins don't have it: matched by wording
   mood: Mood;
   note: string;
   shareName: boolean;
@@ -228,6 +235,16 @@ export type HrImpact = {
   checkInRate: { thisWeek: number; lastWeek: number }; // % of new hires
 };
 
+// How new hires answered one check-in question (counts only)
+export type HrQuestionStats = CheckInQuestion & {
+  answers: number;
+  people: number;
+  thisWeek: number;
+  struggling: number; // stuck, frustrated or overloaded
+  moodCounts: Record<Mood, number>;
+  hardestTeam: { team: string; struggling: number; answers: number } | null; // when viewing all teams
+};
+
 export type HrStats = {
   newHires: number;
   checkedIn: number;
@@ -325,6 +342,8 @@ export type WorkPalzApi = {
   hrImpact: (team: string) => Promise<HrImpact>;
   hrTeams: () => Promise<string[]>;
   hrCheckIns: () => Promise<HrCheckIn[]>;
+  hrQuestions: (team: string) => Promise<HrQuestionStats[]>;
+  saveQuestions: (questions: CheckInQuestion[]) => Promise<void>;
   hrAsks: () => Promise<HrAsk[]>;
   hrRequests: () => Promise<HrRequest[]>;
   setRequestStatus: (id: string, status: RequestStatus) => Promise<void>;

@@ -2,14 +2,14 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { Action, AssistantMessage, AssistantView, CheckInInput, HandbookInput, IslandStatus, Colleague, IslandEvent, IslandLayout, Ping, PingInput, RequestInput, RequestStatus, Shortcuts } from "../shared/types";
+import type { Action, AssistantMessage, AssistantView, CheckInInput, CheckInQuestion, HandbookInput, IslandStatus, Colleague, IslandEvent, IslandLayout, Ping, PingInput, RequestInput, RequestStatus, Shortcuts } from "../shared/types";
 import { DEFAULT_SHORTCUTS, DRAFT_PLACEHOLDER, GUIDE_SOURCES, MOODS, NEGATIVE_MOODS, REQUEST_CATEGORIES, STATUS_LABEL } from "../shared/types";
 import { loadStore, resetStore, store, storeGeneration } from "./store";
 import { analyse } from "./ai";
 import { answerQuestion } from "./ask";
 import { askAssistant, draftHandbookEntry } from "./assistant";
 import { checkInReply, suggestColleague, suggestRequest } from "./helper";
-import { ME_ID, questionForWeek } from "./seed";
+import { ME_ID } from "./seed";
 
 const WIN_W = 500;
 const WIN_H = 640;
@@ -274,7 +274,7 @@ function registerIpc() {
   });
 
   ipcMain.handle("me:get", () => me());
-  ipcMain.handle("checkin:question", () => questionForWeek(me().week));
+  ipcMain.handle("checkin:question", () => store.questionFor(me().week).text);
   ipcMain.handle("checkin:mine", () => {
     const c = store.myCheckInThisWeek(ME_ID);
     return c ? { mood: c.mood, note: c.note, shareName: c.shareName, notifyMe: c.notifyMe !== false, createdAt: c.createdAt } : null;
@@ -284,11 +284,13 @@ function registerIpc() {
     if (!MOODS.some((x) => x.id === input?.mood)) throw new Error("Unknown mood");
     const m = me();
     const note = String(input.note ?? "").trim().slice(0, 280);
+    const q = store.questionFor(m.week);
     store.saveMyCheckIn({
       employeeId: m.id,
       team: m.team,
       week: m.week,
-      question: questionForWeek(m.week),
+      question: q.text,
+      questionId: q.id,
       mood: input.mood,
       note,
       shareName: !!input.shareName,
@@ -402,6 +404,11 @@ function registerIpc() {
   ipcMain.handle("hr:stats", (_e, team: string) => store.hrStats(team));
   ipcMain.handle("hr:impact", (_e, team: string) => store.hrImpact(team));
   ipcMain.handle("hr:checkins", () => store.hrCheckIns());
+  ipcMain.handle("hr:questions", (_e, team: string) => store.hrQuestionStats(String(team ?? "All")));
+  ipcMain.handle("hr:questions-save", (_e, questions: CheckInQuestion[]) => {
+    store.setQuestions(questions);
+    broadcastChange(); // the island picks up the new question for this week
+  });
   ipcMain.handle("hr:asks", () => store.hrAsks());
   ipcMain.handle("hr:requests", () => store.hrRequests());
   ipcMain.handle("hr:request-status", (_e, id: string, status: RequestStatus) => {

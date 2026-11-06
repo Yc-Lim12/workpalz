@@ -1,19 +1,23 @@
-// Requests, Questions, Follow-ups and Check-ins tabs.
+// Requests, Questions, Follow-ups and Check-ins (with the check-in question setup) tabs.
 import { useId, useState } from "react";
 import {
   DRAFT_PLACEHOLDER,
+  FALLBACK_QUESTION,
   GUIDE_SOURCES,
   guideLabel,
   MOODS,
+  ONBOARDING_WEEKS,
   REQUEST_CATEGORIES,
   STATUS_LABEL,
   type Action,
+  type CheckInQuestion,
   type HandbookDraft,
   type HandbookEntry,
   type HandbookInput,
   type GuideSource,
   type HrAsk,
   type HrCheckIn,
+  type HrQuestionStats,
   type RequestStatus,
   type HrRequest,
   type SupportRequest,
@@ -458,57 +462,486 @@ export function FollowUpsTab({ actions, onStatus }: { actions: Action[]; onStatu
 
 // ---------- Check-ins ----------
 
-export function CheckInsTab({ checkIns }: { checkIns: HrCheckIn[] }) {
+// [3, 8, 9, 10, 11, 12] → "Weeks 3, 8–12"
+function weeksLabel(weeks: number[]) {
+  if (!weeks.length) return "Not scheduled";
+  const parts: string[] = [];
+  for (let i = 0; i < weeks.length; i++) {
+    let j = i;
+    while (j + 1 < weeks.length && weeks[j + 1] === weeks[j] + 1) j++;
+    parts.push(j > i ? `${weeks[i]}–${weeks[j]}` : `${weeks[i]}`);
+    i = j;
+  }
+  return `${weeks.length === 1 ? "Week" : "Weeks"} ${parts.join(", ")}`;
+}
+
+const ALL_WEEKS = Array.from({ length: ONBOARDING_WEEKS }, (_, i) => i + 1);
+const field = "w-full rounded-xl border border-[color:var(--hr-input-border)] bg-[color:var(--hr-surface)] px-3.5 text-[14px] outline-none focus:ring-2 focus:ring-[color:var(--hr-blue)]";
+const share = (q: HrQuestionStats) => (q.answers ? q.struggling / q.answers : 0);
+// Plain copies of the questions, the shape the main process saves
+const plain = (qs: HrQuestionStats[]): CheckInQuestion[] => qs.map((q) => ({ id: q.id, text: q.text, weeks: [...q.weeks] }));
+
+type SaveQuestions = (questions: CheckInQuestion[], done: string) => Promise<void>;
+
+// "Q1", "Q2"…: a short name so the weekly schedule stays readable when the wording is cut off
+const qNum = (questions: HrQuestionStats[], id: string) => `Q${questions.findIndex((q) => q.id === id) + 1}`;
+
+function QTag({ children }: { children: string }) {
+  return (
+    <span className="shrink-0 rounded-md bg-[color:var(--hr-blue-soft)] px-1.5 py-0.5 text-[12px] font-bold" style={{ color: C.blueText }}>
+      {children}
+    </span>
+  );
+}
+
+function MoodBar({ q, className = "" }: { q: HrQuestionStats; className?: string }) {
+  return (
+    <div className={`flex h-2 gap-0.5 overflow-hidden rounded-full bg-[color:var(--hr-neutral-bg)] ${className}`} aria-hidden="true">
+      {MOODS.map((m) => (q.moodCounts[m.id] ? <div key={m.id} style={{ flex: q.moodCounts[m.id], background: m.color }} /> : null))}
+    </div>
+  );
+}
+
+function StrugglingChip({ q }: { q: HrQuestionStats }) {
+  const worrying = q.answers >= 2 && share(q) >= 0.4;
+  return (
+    <Chip bg={worrying ? "var(--hr-amber-bg)" : "var(--hr-neutral-bg)"} fg={worrying ? "var(--hr-amber-fg)" : "var(--hr-neutral-fg)"}>
+      {Math.round(share(q) * 100)}% struggling
+    </Chip>
+  );
+}
+
+// The full breakdown, shown when a question row is opened
+function QuestionDetails({ q }: { q: HrQuestionStats }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-xl bg-[color:var(--hr-subtle)] p-3.5 text-[13px]" style={{ color: C.muted }}>
+      <p className="m-0">
+        <span className="font-semibold text-[color:var(--hr-text)]">{q.answers}</span> answer{q.answers === 1 ? "" : "s"} from {q.people}{" "}
+        {q.people === 1 ? "person" : "people"} · {q.thisWeek} this week · {q.struggling} stuck, frustrated or overloaded
+        {q.hardestTeam && (
+          <>
+            {" "}
+            · Hardest for <span className="font-semibold text-[color:var(--hr-text)]">{q.hardestTeam.team}</span> ({q.hardestTeam.struggling} of {q.hardestTeam.answers})
+          </>
+        )}
+      </p>
+      <ul className="m-0 flex list-none flex-wrap gap-x-3 gap-y-1 p-0 text-[12.5px]">
+        {MOODS.map((m) => (
+          <li key={m.id} className="flex items-center gap-1.5">
+            <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full" style={{ background: m.color }} />
+            {m.label}: <span className="font-semibold text-[color:var(--hr-text)]">{q.moodCounts[m.id]}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// One place to see and change what each of the 12 weeks asks. Same size however many questions there are.
+function WeekSchedule({ questions, onSave, busy }: { questions: HrQuestionStats[]; onSave: SaveQuestions; busy: boolean }) {
+  const id = useId();
+  const owner = (w: number) => questions.find((q) => q.weeks.includes(w));
+  const missing = ALL_WEEKS.filter((w) => !owner(w));
+
+  const assign = (w: number, questionId: string) => {
+    const next = plain(questions).map((q) => ({
+      ...q,
+      weeks: q.id === questionId ? [...q.weeks.filter((x) => x !== w), w].sort((a, b) => a - b) : q.weeks.filter((x) => x !== w),
+    }));
+    const q = questions.find((x) => x.id === questionId);
+    onSave(next, q ? `Week ${w} now asks "${q.text}"` : `Week ${w} now asks the general question`);
+  };
+
+  return (
+    <Card as="section" aria-labelledby={`${id}-title`} className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <h2 id={`${id}-title`} className="m-0 text-[16px] font-bold">
+          Weekly schedule
+        </h2>
+        <p className="m-0 text-[13px]" style={{ color: C.muted }}>
+          Each onboarding week asks one question. Changes reach new hires at their next check-in.
+        </p>
+      </div>
+      <ol className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2 p-0">
+        {ALL_WEEKS.map((w) => {
+          const q = owner(w);
+          return (
+            <li
+              key={w}
+              className="flex flex-col gap-1 rounded-xl border p-2.5"
+              style={{ borderColor: q ? "var(--hr-line)" : "var(--hr-amber-fg)", background: q ? "var(--hr-surface)" : C.amberBg }}
+            >
+              <label htmlFor={`${id}-w${w}`} className="text-[12px] font-bold uppercase tracking-wide" style={{ color: q ? C.muted : C.amberText }}>
+                Week {w}
+              </label>
+              <select
+                id={`${id}-w${w}`}
+                value={q?.id ?? FALLBACK_QUESTION.id}
+                disabled={busy}
+                onChange={(e) => assign(w, e.target.value)}
+                title={q ? `${qNum(questions, q.id)} · ${q.text}` : FALLBACK_QUESTION.text}
+                className="min-h-10 w-full truncate rounded-lg border border-[color:var(--hr-input-border)] bg-[color:var(--hr-surface)] px-2 text-[13px] text-[color:var(--hr-text)]"
+              >
+                {questions.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {qNum(questions, x.id)} · {x.text}
+                  </option>
+                ))}
+                <option value={FALLBACK_QUESTION.id}>General: {FALLBACK_QUESTION.text}</option>
+              </select>
+            </li>
+          );
+        })}
+      </ol>
+      {missing.length > 0 && (
+        <p className="m-0 text-[13px] font-semibold" style={{ color: C.amberText }}>
+          {weeksLabel(missing)} {missing.length === 1 ? "asks" : "ask"} the general question "{FALLBACK_QUESTION.text}"
+        </p>
+      )}
+    </Card>
+  );
+}
+
+// Inline editor for one question's wording (used for new and existing questions)
+function QuestionEditor({ label, initial, busy, onSave, onCancel }: { label: string; initial: string; busy: boolean; onSave: (text: string) => void; onCancel: () => void }) {
+  const id = useId();
+  const [text, setText] = useState(initial);
+  const ok = !!text.trim() && !busy;
+  return (
+    <form
+      className="flex flex-wrap items-end gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (ok) onSave(text.trim());
+      }}
+    >
+      <div className="flex min-w-[240px] flex-1 flex-col gap-1.5">
+        <label htmlFor={id} className="text-[13px] font-semibold">
+          {label}
+        </label>
+        <input
+          id={id}
+          autoFocus
+          value={text}
+          maxLength={140}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              onCancel();
+            }
+          }}
+          className={`${field} min-h-11`}
+        />
+      </div>
+      <Button type="submit" disabled={!ok}>
+        {busy ? "Saving…" : "Save"}
+      </Button>
+      <Button variant="ghost" disabled={busy} onClick={onCancel}>
+        Cancel
+      </Button>
+    </form>
+  );
+}
+
+type Sort = "schedule" | "struggling" | "answers";
+
+function QuestionList({ questions, fallback, onSave, busy }: { questions: HrQuestionStats[]; fallback?: HrQuestionStats; onSave: SaveQuestions; busy: boolean }) {
+  const id = useId();
+  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<Sort>("schedule");
+
+  const firstWeek = (q: HrQuestionStats) => q.weeks[0] ?? ONBOARDING_WEEKS + 1; // not scheduled: last
+  const shown = questions
+    .filter((q) => q.text.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a, b) =>
+      sort === "struggling" ? share(b) - share(a) || b.answers - a.answers : sort === "answers" ? b.answers - a.answers : firstWeek(a) - firstWeek(b)
+    );
+
+  // A failed save keeps the editor open (the error shows above the list)
+  const tried = (p: Promise<void>) => p.then(() => true, () => false);
+  const add = async (text: string) => {
+    if (!(await tried(onSave([...plain(questions), { id: `q-${Date.now()}`, text, weeks: [] }], `Question added. Pick its weeks in the weekly schedule.`)))) return;
+    setAdding(false);
+    focusSoon(`${id}-add`);
+  };
+  const rename = async (qid: string, text: string) => {
+    if (!(await tried(onSave(plain(questions).map((q) => (q.id === qid ? { ...q, text } : q)), "Question saved")))) return;
+    setEditing(null);
+    focusSoon(`${id}-edit-${qid}`);
+  };
+  const remove = async (qid: string) => {
+    if (!(await tried(onSave(plain(questions).filter((q) => q.id !== qid), "Question removed")))) return;
+    setRemoving(null);
+    focusSoon(`${id}-add`);
+  };
+  const toggle = (qid: string) =>
+    setOpen((s) => {
+      const next = new Set(s);
+      if (next.has(qid)) next.delete(qid);
+      else next.add(qid);
+      return next;
+    });
+
+  return (
+    <Card as="section" aria-labelledby={`${id}-title`} className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 id={`${id}-title`} className="m-0 mr-auto text-[16px] font-bold">
+          Questions <span className="font-semibold" style={{ color: C.muted }}>({questions.length})</span>
+        </h2>
+        {questions.length > 8 && (
+          <>
+            <label htmlFor={`${id}-search`} className="sr-only">
+              Search questions
+            </label>
+            <input
+              id={`${id}-search`}
+              type="search"
+              placeholder="Search questions"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={`${field} min-h-10 !w-[220px]`}
+            />
+          </>
+        )}
+        <label className="flex items-center gap-1.5 text-[12.5px]" style={{ color: C.muted }}>
+          Sort
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as Sort)}
+            className="min-h-10 rounded-lg border border-[color:var(--hr-input-border)] bg-[color:var(--hr-surface)] px-2.5 text-[13px] text-[color:var(--hr-text)]"
+          >
+            <option value="schedule">By week</option>
+            <option value="struggling">Most struggling</option>
+            <option value="answers">Most answers</option>
+          </select>
+        </label>
+        {!adding && (
+          <Button id={`${id}-add`} className="!min-h-10 text-[13.5px]" onClick={() => setAdding(true)} disabled={busy}>
+            + Add question
+          </Button>
+        )}
+      </div>
+
+      {adding && (
+        <div className="rounded-xl bg-[color:var(--hr-subtle)] p-3.5">
+          <QuestionEditor
+            label="New question"
+            initial=""
+            busy={busy}
+            onSave={add}
+            onCancel={() => {
+              setAdding(false);
+              focusSoon(`${id}-add`);
+            }}
+          />
+        </div>
+      )}
+
+      {shown.length === 0 ? (
+        <p className="m-0 text-[14px]" style={{ color: C.muted }}>
+          {questions.length ? "No questions match your search." : "No questions yet. Every week asks the general question."}
+        </p>
+      ) : (
+        <ul className="m-0 flex list-none flex-col p-0">
+          {shown.map((q) => (
+            <li key={q.id} className="flex flex-col gap-2.5 border-t border-[color:var(--hr-line-soft)] py-3 first:border-0 first:pt-0">
+              {editing === q.id ? (
+                <QuestionEditor
+                  label="Question"
+                  initial={q.text}
+                  busy={busy}
+                  onSave={(t) => rename(q.id, t)}
+                  onCancel={() => {
+                    setEditing(null);
+                    focusSoon(`${id}-edit-${q.id}`);
+                  }}
+                />
+              ) : (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <button
+                    type="button"
+                    aria-expanded={open.has(q.id)}
+                    onClick={() => toggle(q.id)}
+                    className="flex min-h-11 min-w-0 flex-[1_1_320px] cursor-pointer items-center gap-2 rounded-lg bg-transparent px-1 text-left"
+                  >
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 16 16"
+                      className="h-4 w-4 shrink-0 transition-transform motion-reduce:transition-none"
+                      style={{ color: C.muted, transform: open.has(q.id) ? "rotate(90deg)" : undefined }}
+                    >
+                      <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <QTag>{qNum(questions, q.id)}</QTag>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="text-[14.5px] font-semibold">{q.text}</span>
+                      <span className="text-[12.5px]" style={{ color: q.weeks.length ? C.muted : C.amberText }}>
+                        {weeksLabel(q.weeks)}
+                      </span>
+                    </span>
+                  </button>
+                  <span className="w-[88px] text-[13px]" style={{ color: C.muted }}>
+                    {q.answers} answer{q.answers === 1 ? "" : "s"}
+                  </span>
+                  {q.answers ? <StrugglingChip q={q} /> : <span className="text-[13px]" style={{ color: C.muted }}>No answers yet</span>}
+                  <MoodBar q={q} className="w-[120px]" />
+                  <span className="flex gap-1">
+                    <Button id={`${id}-edit-${q.id}`} variant="ghost" className="!min-h-10 !px-3 text-[13px]" aria-label={`Edit "${q.text}"`} disabled={busy} onClick={() => setEditing(q.id)}>
+                      Edit
+                    </Button>
+                    <Button variant="ghost" className="!min-h-10 !px-3 text-[13px]" aria-label={`Remove "${q.text}"`} disabled={busy} onClick={() => setRemoving(q.id)}>
+                      Remove
+                    </Button>
+                  </span>
+                </div>
+              )}
+              {removing === q.id && (
+                <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl p-3" style={{ background: C.amberBg }}>
+                  <span className="flex-1 text-[13px]" style={{ color: C.amberText }}>
+                    Remove this question?{" "}
+                    {q.weeks.length ? `${weeksLabel(q.weeks)} will ask the general question instead.` : ""} Past answers stay in All check-ins.
+                  </span>
+                  <Button variant="dark" className="!min-h-10 text-[13px]" autoFocus disabled={busy} onClick={() => remove(q.id)}>
+                    Remove
+                  </Button>
+                  <Button variant="ghost" className="!min-h-10 text-[13px]" disabled={busy} onClick={() => setRemoving(null)}>
+                    Keep it
+                  </Button>
+                </div>
+              )}
+              {open.has(q.id) && editing !== q.id && <QuestionDetails q={q} />}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {fallback && (
+        <div className="flex flex-col gap-2 border-t border-[color:var(--hr-line-soft)] pt-3">
+          <p className="m-0 text-[14px] font-semibold">
+            General: {FALLBACK_QUESTION.text} <span className="text-[12.5px] font-normal" style={{ color: C.muted }}>asked in weeks without a question</span>
+          </p>
+          <QuestionDetails q={fallback} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function CheckInHistory({ checkIns }: { checkIns: HrCheckIn[] }) {
   const sorted = [...checkIns].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (sorted.length === 0) return <Empty>No check-ins yet.</Empty>;
+  return (
+    <Card className="overflow-x-auto !p-0">
+      <table className="w-full min-w-[760px] border-collapse">
+        <caption className="sr-only">Weekly check-ins from new hires</caption>
+        <thead style={{ color: C.muted }}>
+          <tr className="border-b border-[color:var(--hr-line-soft)]">
+            <th scope="col" className={th}>From</th>
+            <th scope="col" className={th}>Question</th>
+            <th scope="col" className={th}>Answer</th>
+            <th scope="col" className={th}>Comment</th>
+            <th scope="col" className={th}>When</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((c) => {
+            const m = MOODS.find((x) => x.id === c.mood)!;
+            return (
+              <tr key={c.id} className="border-b border-[color:var(--hr-line-soft)] last:border-0">
+                <th scope="row" className={`${td} text-left font-semibold`}>
+                  {c.name ?? `${c.team} new hire`}
+                  <div className="text-[12.5px] font-normal" style={{ color: C.muted }}>
+                    Week {c.week}
+                    {c.name ? ` · ${c.team}` : ""}
+                  </div>
+                </th>
+                <td className={`${td} max-w-[220px]`} style={{ color: C.muted }}>
+                  {c.question}
+                </td>
+                <td className={td}>
+                  <Chip bg="var(--hr-neutral-bg)" fg="var(--hr-text2)">
+                    <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full" style={{ background: m.color }} />
+                    {m.label}
+                  </Chip>
+                </td>
+                <td className={`${td} max-w-[320px]`}>{c.note || <span style={{ color: C.muted }}>No comment</span>}</td>
+                <td className={`${td} whitespace-nowrap`} style={{ color: C.muted }}>
+                  {ago(c.createdAt)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+export function CheckInsTab({ checkIns, questions, onSaveQuestions }: { checkIns: HrCheckIn[]; questions: HrQuestionStats[]; onSaveQuestions: SaveQuestions }) {
+  const [view, setView] = useState<"questions" | "all">("questions");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const asked = questions.filter((q) => q.id !== FALLBACK_QUESTION.id);
+  const fallback = questions.find((q) => q.id === FALLBACK_QUESTION.id);
+
+  // Every change saves straight away; a failure keeps the editor open (the caller awaits)
+  const save: SaveQuestions = async (next, done) => {
+    setBusy(true);
+    setError("");
+    try {
+      await onSaveQuestions(next, done);
+    } catch (e) {
+      setError("Couldn't save. Please try again.");
+      throw e;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const quiet: SaveQuestions = (next, done) => save(next, done).catch(() => {}); // the error is shown above
+
   return (
     <div className="flex flex-col gap-5">
-      <Title title="Check-ins" intro="Every voluntary weekly check-in. Names only appear when the employee chose to share them." />
-      {sorted.length === 0 ? (
-        <Empty>No check-ins yet.</Empty>
+      <Title title="Check-ins" intro="Every voluntary weekly check-in. Names only appear when the employee chose to share them. Question results are counts only." />
+      <div role="group" aria-label="Show" className="flex w-fit gap-0.5 rounded-xl bg-[color:var(--hr-chip)] p-1">
+        {(
+          [
+            ["questions", "Questions & results"],
+            ["all", `All check-ins (${checkIns.length})`],
+          ] as const
+        ).map(([v, label]) => (
+          <button
+            key={v}
+            type="button"
+            aria-pressed={view === v}
+            onClick={() => setView(v)}
+            className="min-h-10 cursor-pointer rounded-lg px-3.5 text-[13.5px] font-semibold"
+            style={{
+              background: view === v ? "var(--hr-surface)" : "transparent",
+              color: view === v ? C.blueText : "var(--hr-text3)",
+              boxShadow: view === v ? "0 1px 2px rgba(16,24,40,0.08)" : undefined,
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {error && (
+        <p role="alert" className="m-0 text-[13px] font-semibold" style={{ color: "var(--hr-red-fg)" }}>
+          {error}
+        </p>
+      )}
+      {view === "questions" ? (
+        <>
+          <WeekSchedule questions={asked} onSave={quiet} busy={busy} />
+          <QuestionList questions={asked} fallback={fallback} onSave={save} busy={busy} />
+        </>
       ) : (
-        <Card className="overflow-x-auto !p-0">
-          <table className="w-full min-w-[760px] border-collapse">
-            <caption className="sr-only">Weekly check-ins from new hires</caption>
-            <thead style={{ color: C.muted }}>
-              <tr className="border-b border-[color:var(--hr-line-soft)]">
-                <th scope="col" className={th}>From</th>
-                <th scope="col" className={th}>Question</th>
-                <th scope="col" className={th}>Answer</th>
-                <th scope="col" className={th}>Comment</th>
-                <th scope="col" className={th}>When</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((c) => {
-                const m = MOODS.find((x) => x.id === c.mood)!;
-                return (
-                  <tr key={c.id} className="border-b border-[color:var(--hr-line-soft)] last:border-0">
-                    <th scope="row" className={`${td} text-left font-semibold`}>
-                      {c.name ?? `${c.team} new hire`}
-                      <div className="text-[12.5px] font-normal" style={{ color: C.muted }}>
-                        Week {c.week}
-                        {c.name ? ` · ${c.team}` : ""}
-                      </div>
-                    </th>
-                    <td className={`${td} max-w-[220px]`} style={{ color: C.muted }}>
-                      {c.question}
-                    </td>
-                    <td className={td}>
-                      <Chip bg="var(--hr-neutral-bg)" fg="var(--hr-text2)">
-                        <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full" style={{ background: m.color }} />
-                        {m.label}
-                      </Chip>
-                    </td>
-                    <td className={`${td} max-w-[320px]`}>{c.note || <span style={{ color: C.muted }}>No comment</span>}</td>
-                    <td className={`${td} whitespace-nowrap`} style={{ color: C.muted }}>
-                      {ago(c.createdAt)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Card>
+        <CheckInHistory checkIns={checkIns} />
       )}
     </div>
   );

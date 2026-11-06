@@ -446,6 +446,43 @@ check("Published entry is listed under Added by HR", (await hr.locator("main").i
 
 await hr.getByRole("button", { name: /^Check-ins/ }).click();
 await hr.waitForTimeout(300);
+await shot(hr, "hr-checkin-questions", null);
+await axe(hr, "HR check-in questions");
+const cq = await hr.locator("main").innerText();
+check("Belonging is asked from week 3", cq.includes("Do you feel part of the team?") && cq.includes("Weeks 3, 8–12"));
+check("Each question shows its stats", /\d+% struggling/.test(cq));
+
+// The weekly schedule: HR moves week 2 (Mei Ling's week) to the belonging question in one step
+await hr.getByLabel("Week 2", { exact: true }).selectOption({ label: "Q2 · Do you feel part of the team?" });
+await hr.waitForTimeout(400);
+check("Week 2 moved to the belonging question", (await hr.locator("main").innerText()).includes("Weeks 2–3, 8–12"));
+
+// Adding a question happens at the top of the list, no scrolling
+await hr.getByRole("button", { name: "+ Add question" }).click();
+await hr.getByLabel("New question").fill("Do you know who to ask when you're stuck?");
+await hr.waitForTimeout(300); // Save just became enabled: let its fade-in finish before measuring contrast
+await axe(hr, "HR add check-in question");
+await hr.keyboard.press("Enter");
+await hr.waitForTimeout(400);
+const added = await hr.locator("main").innerText();
+check("New question is added, not scheduled yet", added.includes("Do you know who to ask when you're stuck?") && added.includes("Not scheduled"));
+
+// Opening a question shows its full breakdown
+await hr.getByRole("button", { name: /^Q1 Do you have the tools/ }).click();
+await hr.waitForTimeout(200);
+check("Opening a question shows the mood breakdown", /Hardest for Engineering/.test(await hr.locator("main").innerText()));
+await axe(hr, "HR check-in question details");
+
+await hook("sendIsland", { type: "checkin-prompt" });
+await settle();
+await island.getByRole("button", { name: /Weekly check-in is ready/ }).click();
+await settle();
+check("The island asks HR's new question", (await island.locator(".island-shell").innerText()).includes("Do you feel part of the team?"));
+await island.keyboard.press("Escape");
+await settle();
+
+await hr.getByRole("button", { name: /^All check-ins/ }).click();
+await hr.waitForTimeout(300);
 await shot(hr, "hr-checkins", null);
 await axe(hr, "HR check-ins");
 const ci = await hr.locator("main").innerText();
