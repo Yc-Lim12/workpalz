@@ -561,17 +561,17 @@ check("Live check-in is anonymous to HR", ci.includes("Engineering new hire") &&
 
 // Team filter
 await hr.getByRole("button", { name: "Overview" }).click();
-await hr.getByLabel("Team").selectOption("Marketing");
+await hr.locator("select#team").selectOption("Marketing");
 await hr.waitForTimeout(400);
 const mk = await hr.locator("main").innerText();
 check("Team filter shows only Marketing themes", !mk.includes("4 of 5 Engineering") && mk.includes("Marketing"));
 check("Impact section is shown", mk.includes("Impact") && mk.includes("Company guide gaps closed"));
-await hr.getByLabel("Team").selectOption("All");
+await hr.locator("select#team").selectOption("All");
 await hr.waitForTimeout(400);
 check("Impact shows whether fixes worked", /Fixes that worked\s*[\s\S]{0,80}0 of 1/.test(await hr.locator("main").innerText()));
 
 // Ask AI: the assistant on every page (offline answers here)
-await hr.getByRole("button", { name: "Ask AI" }).click();
+await hr.getByRole("button", { name: "Ask AI", exact: true }).click();
 await hr.getByRole("dialog", { name: "WorkPalz AI assistant" }).waitFor();
 await hr.getByRole("button", { name: "Which team needs help most this week?" }).click();
 await hr.getByText(/Offline mode/).first().waitFor({ timeout: 5000 });

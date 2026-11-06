@@ -32,6 +32,7 @@ New employees often struggle quietly in their first months: missing tools, uncle
 - **Your privacy**: see what's stored, download it, or delete it.
 
 **For HR (the dashboard)**
+- **Overview at a glance**: a "Needs your attention" card with the week's headline and the main actions (Analyse, Ask AI), key numbers with up/down vs last week, a **needs-help-by-team** chart, a **how check-ins felt** donut, a team switcher, follow-ups and recent activity in one view. Every chart also shows its numbers in words.
 - **AI themes** across check-ins, unanswered questions and open requests, with "X of Y new hires", week-over-week trend, quotes and a suggested action.
 - **One-click follow-ups**; marking one done tells the people who raised it, without revealing who they are.
 - **Follow-ups check they worked**: each one shows *Helped / Not really / No answer yet* and the anonymous reasons. If half or more say it didn't help, it comes back as **Needs another try**; HR writes what they'll try this time, and the same new hires are told and asked again. After two tries that didn't work, WorkPalz stops asking and offers the new hires the HR Partner (**Still not fixed after 2 tries**). Impact shows **Fixes that worked**.

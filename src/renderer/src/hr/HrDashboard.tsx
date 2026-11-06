@@ -281,11 +281,16 @@ export default function HrDashboard() {
         {tab === "overview" && (
           <Overview
             team={team}
+            teams={teams}
             stats={stats}
             impact={impact}
             manager={!!managerTeam}
             analysis={analysis}
-            actions={actions}
+            actions={actions.filter(inTeam)}
+            requests={requests.filter(inTeam)}
+            asks={asks.filter(inTeam)}
+            onSelectTeam={managerTeam ? undefined : setTeam}
+            onOpenTab={setTab}
             analysing={analysing}
             staleAnalysis={stale}
             onAnalyse={runAnalysis}

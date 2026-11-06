@@ -449,12 +449,28 @@ export const store = {
     const signalCounts = { good: 0, okay: 0, struggling: 0 } as Record<AnswerSignal, number>;
     for (const c of recent) signalCounts[c.signal]++;
     const asks = data.asks.filter((a) => inTeam(a) && inLastWeek(a.createdAt));
+    const before = data.checkIns.filter((c) => inTeam(c) && inWeekBefore(c.createdAt));
+    const teams = Array.from(new Set(people.map((e) => e.team)));
     return {
       newHires: people.length,
       checkedIn: new Set(recent.map((c) => c.employeeId)).size,
       checkIns: recent.length,
       negative: signalCounts.struggling,
       signalCounts,
+      lastWeek: {
+        checkedIn: new Set(before.map((c) => c.employeeId)).size,
+        checkIns: before.length,
+        negative: before.filter((c) => c.signal === "struggling").length,
+      },
+      byTeam: teams.map((t) => {
+        const inT = recent.filter((c) => c.team === t);
+        return {
+          team: t,
+          newHires: people.filter((e) => e.team === t).length,
+          checkedIn: new Set(inT.map((c) => c.employeeId)).size,
+          needHelp: new Set(inT.filter((c) => c.signal === "struggling").map((c) => c.employeeId)).size,
+        };
+      }),
       openRequests: data.requests.filter((r) => inTeam(r) && r.status !== "resolved").length,
       unanswered: asks.filter((a) => !a.answered).length,
       questions: asks.length,

@@ -289,6 +289,10 @@ export type HrStats = {
   openRequests: number;
   unanswered: number;
   questions: number;
+  // The same week-before numbers, for "up / down vs last week"
+  lastWeek: { checkedIn: number; checkIns: number; negative: number };
+  // Per team (counts only, never who): how many new hires said they need help this week
+  byTeam: { team: string; newHires: number; checkedIn: number; needHelp: number }[];
 };
 
 // ---------- HR assistant ----------

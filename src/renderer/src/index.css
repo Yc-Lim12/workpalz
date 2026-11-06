@@ -54,6 +54,13 @@ html.hr {
   --hr-green-bg: #ddf3e7;
   --hr-green-fg: #185c3b;
   --hr-red-fg: #8a2e00;
+  --hr-red-bg: #ffe6dd;
+  /* The Overview's hero card: warm gradient, dark text (AA contrast on both ends) */
+  --hr-hero-from: #ffd29a;
+  --hr-hero-to: #fff2df;
+  --hr-hero-text: #2b1a06;
+  --hr-hero-muted: #6b4a21;
+  --hr-hero-track: rgba(43, 26, 6, 0.14);
   --hr-red-bg: #ffe1d6;
   color-scheme: light;
 }
@@ -88,6 +95,12 @@ html.hr[data-theme="dark"] {
   --hr-green-bg: #15362a;
   --hr-green-fg: #8fdcb4;
   --hr-red-fg: #ffa07c;
+  --hr-red-bg: #42201a;
+  --hr-hero-from: #4d3215;
+  --hr-hero-to: #262019;
+  --hr-hero-text: #ffe8c9;
+  --hr-hero-muted: #e3c59b;
+  --hr-hero-track: rgba(255, 232, 201, 0.16);
   --hr-red-bg: #4a1f12;
   color-scheme: dark;
 }

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { AssistantMessage, AssistantReply, AssistantView } from "../../../shared/types";
 import { Button, C } from "./ui";
+import { ASK_AI_EVENT } from "./Overview";
 
 const api = window.workpalz;
 
@@ -15,6 +16,13 @@ const STARTERS: Record<AssistantView["tab"], string[]> = {
 
 export default function Assistant({ view }: { view: AssistantView }) {
   const [open, setOpen] = useState(false);
+
+  // The Overview's "Ask AI about it" button opens this same panel
+  useEffect(() => {
+    const show = () => setOpen(true);
+    window.addEventListener(ASK_AI_EVENT, show);
+    return () => window.removeEventListener(ASK_AI_EVENT, show);
+  }, []);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [source, setSource] = useState<AssistantReply["source"] | null>(null);
