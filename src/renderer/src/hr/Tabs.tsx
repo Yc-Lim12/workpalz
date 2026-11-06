@@ -5,11 +5,16 @@ import {
   FALLBACK_QUESTION,
   GUIDE_SOURCES,
   guideLabel,
-  MOODS,
+  MAX_CHOICES,
+  MIN_CHOICES,
   ONBOARDING_WEEKS,
   REQUEST_CATEGORIES,
+  SIGNALS,
+  signalOf,
   STATUS_LABEL,
   type Action,
+  type AnswerSet,
+  type AnswerSignal,
   type CheckInQuestion,
   type HandbookDraft,
   type HandbookEntry,
@@ -479,9 +484,11 @@ const ALL_WEEKS = Array.from({ length: ONBOARDING_WEEKS }, (_, i) => i + 1);
 const field = "w-full rounded-xl border border-[color:var(--hr-input-border)] bg-[color:var(--hr-surface)] px-3.5 text-[14px] outline-none focus:ring-2 focus:ring-[color:var(--hr-blue)]";
 const share = (q: HrQuestionStats) => (q.answers ? q.struggling / q.answers : 0);
 // Plain copies of the questions, the shape the main process saves
-const plain = (qs: HrQuestionStats[]): CheckInQuestion[] => qs.map((q) => ({ id: q.id, text: q.text, weeks: [...q.weeks] }));
+const plain = (qs: HrQuestionStats[]): CheckInQuestion[] => qs.map((q) => ({ id: q.id, text: q.text, weeks: [...q.weeks], answerSetId: q.answerSetId }));
 
 type SaveQuestions = (questions: CheckInQuestion[], done: string) => Promise<void>;
+type SaveAnswerSets = (sets: AnswerSet[], done: string) => Promise<void>;
+const setName = (sets: AnswerSet[], setId: string) => sets.find((a) => a.id === setId)?.name ?? sets[0]?.name ?? "";
 
 // "Q1", "Q2"…: a short name so the weekly schedule stays readable when the wording is cut off
 const qNum = (questions: HrQuestionStats[], id: string) => `Q${questions.findIndex((q) => q.id === id) + 1}`;
@@ -494,19 +501,24 @@ function QTag({ children }: { children: string }) {
   );
 }
 
-function MoodBar({ q, className = "" }: { q: HrQuestionStats; className?: string }) {
+// Doing well / Okay / Needs help, whatever the choices are called
+function SignalBar({ q, className = "" }: { q: HrQuestionStats; className?: string }) {
   return (
     <div className={`flex h-2 gap-0.5 overflow-hidden rounded-full bg-[color:var(--hr-neutral-bg)] ${className}`} aria-hidden="true">
-      {MOODS.map((m) => (q.moodCounts[m.id] ? <div key={m.id} style={{ flex: q.moodCounts[m.id], background: m.color }} /> : null))}
+      {SIGNALS.map((m) => (q.signalCounts[m.id] ? <div key={m.id} style={{ flex: q.signalCounts[m.id], background: m.color }} /> : null))}
     </div>
   );
+}
+
+function SignalDot({ signal }: { signal: AnswerSignal }) {
+  return <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: signalOf(signal).color }} />;
 }
 
 function StrugglingChip({ q }: { q: HrQuestionStats }) {
   const worrying = q.answers >= 2 && share(q) >= 0.4;
   return (
     <Chip bg={worrying ? "var(--hr-amber-bg)" : "var(--hr-neutral-bg)"} fg={worrying ? "var(--hr-amber-fg)" : "var(--hr-neutral-fg)"}>
-      {Math.round(share(q) * 100)}% struggling
+      {Math.round(share(q) * 100)}% need help
     </Chip>
   );
 }
@@ -517,7 +529,7 @@ function QuestionDetails({ q }: { q: HrQuestionStats }) {
     <div className="flex flex-col gap-2 rounded-xl bg-[color:var(--hr-subtle)] p-3.5 text-[13px]" style={{ color: C.muted }}>
       <p className="m-0">
         <span className="font-semibold text-[color:var(--hr-text)]">{q.answers}</span> answer{q.answers === 1 ? "" : "s"} from {q.people}{" "}
-        {q.people === 1 ? "person" : "people"} · {q.thisWeek} this week · {q.struggling} stuck, frustrated or overloaded
+        {q.people === 1 ? "person" : "people"} · {q.thisWeek} this week · {q.struggling} need help
         {q.hardestTeam && (
           <>
             {" "}
@@ -526,10 +538,12 @@ function QuestionDetails({ q }: { q: HrQuestionStats }) {
         )}
       </p>
       <ul className="m-0 flex list-none flex-wrap gap-x-3 gap-y-1 p-0 text-[12.5px]">
-        {MOODS.map((m) => (
-          <li key={m.id} className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full" style={{ background: m.color }} />
-            {m.label}: <span className="font-semibold text-[color:var(--hr-text)]">{q.moodCounts[m.id]}</span>
+        {q.choiceCounts.map((c) => (
+          <li key={`${c.current}-${c.id}-${c.label}`} className="flex items-center gap-1.5">
+            <SignalDot signal={c.signal} />
+            {c.label}
+            <span className="sr-only"> ({signalOf(c.signal).label.toLowerCase()})</span>
+            {!c.current && <span> (earlier choice)</span>}: <span className="font-semibold text-[color:var(--hr-text)]">{c.count}</span>
           </li>
         ))}
       </ul>
@@ -603,16 +617,40 @@ function WeekSchedule({ questions, onSave, busy }: { questions: HrQuestionStats[
 }
 
 // Inline editor for one question's wording (used for new and existing questions)
-function QuestionEditor({ label, initial, busy, onSave, onCancel }: { label: string; initial: string; busy: boolean; onSave: (text: string) => void; onCancel: () => void }) {
+function QuestionEditor({
+  label,
+  initial,
+  initialSet,
+  answerSets,
+  busy,
+  onSave,
+  onCancel,
+}: {
+  label: string;
+  initial: string;
+  initialSet: string;
+  answerSets: AnswerSet[];
+  busy: boolean;
+  onSave: (text: string, answerSetId: string) => void;
+  onCancel: () => void;
+}) {
   const id = useId();
   const [text, setText] = useState(initial);
-  const ok = !!text.trim() && !busy;
+  const [setId, setSetId] = useState(answerSets.some((a) => a.id === initialSet) ? initialSet : (answerSets[0]?.id ?? ""));
+  const choices = answerSets.find((a) => a.id === setId)?.choices ?? [];
+  const ok = !!text.trim() && !!setId && !busy;
   return (
     <form
       className="flex flex-wrap items-end gap-2"
       onSubmit={(e) => {
         e.preventDefault();
-        if (ok) onSave(text.trim());
+        if (ok) onSave(text.trim(), setId);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onCancel();
+        }
       }}
     >
       <div className="flex min-w-[240px] flex-1 flex-col gap-1.5">
@@ -625,14 +663,26 @@ function QuestionEditor({ label, initial, busy, onSave, onCancel }: { label: str
           value={text}
           maxLength={140}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.stopPropagation();
-              onCancel();
-            }
-          }}
           className={`${field} min-h-11`}
         />
+      </div>
+      <div className="flex min-w-[200px] flex-col gap-1.5">
+        <label htmlFor={`${id}-set`} className="text-[13px] font-semibold">
+          Answer choices
+        </label>
+        <select
+          id={`${id}-set`}
+          value={setId}
+          onChange={(e) => setSetId(e.target.value)}
+          aria-describedby={`${id}-preview`}
+          className="min-h-11 rounded-xl border border-[color:var(--hr-input-border)] bg-[color:var(--hr-surface)] px-2.5 text-[14px] text-[color:var(--hr-text)]"
+        >
+          {answerSets.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
       </div>
       <Button type="submit" disabled={!ok}>
         {busy ? "Saving…" : "Save"}
@@ -640,13 +690,28 @@ function QuestionEditor({ label, initial, busy, onSave, onCancel }: { label: str
       <Button variant="ghost" disabled={busy} onClick={onCancel}>
         Cancel
       </Button>
+      <p id={`${id}-preview`} className="m-0 w-full text-[12.5px]" style={{ color: C.muted }}>
+        New hires tap: {choices.map((c) => c.label).join(" · ")}
+      </p>
     </form>
   );
 }
 
 type Sort = "schedule" | "struggling" | "answers";
 
-function QuestionList({ questions, fallback, onSave, busy }: { questions: HrQuestionStats[]; fallback?: HrQuestionStats; onSave: SaveQuestions; busy: boolean }) {
+function QuestionList({
+  questions,
+  answerSets,
+  fallback,
+  onSave,
+  busy,
+}: {
+  questions: HrQuestionStats[];
+  answerSets: AnswerSet[];
+  fallback?: HrQuestionStats;
+  onSave: SaveQuestions;
+  busy: boolean;
+}) {
   const id = useId();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -664,13 +729,13 @@ function QuestionList({ questions, fallback, onSave, busy }: { questions: HrQues
 
   // A failed save keeps the editor open (the error shows above the list)
   const tried = (p: Promise<void>) => p.then(() => true, () => false);
-  const add = async (text: string) => {
-    if (!(await tried(onSave([...plain(questions), { id: `q-${Date.now()}`, text, weeks: [] }], `Question added. Pick its weeks in the weekly schedule.`)))) return;
+  const add = async (text: string, answerSetId: string) => {
+    if (!(await tried(onSave([...plain(questions), { id: `q-${Date.now()}`, text, weeks: [], answerSetId }], `Question added. Pick its weeks in the weekly schedule.`)))) return;
     setAdding(false);
     focusSoon(`${id}-add`);
   };
-  const rename = async (qid: string, text: string) => {
-    if (!(await tried(onSave(plain(questions).map((q) => (q.id === qid ? { ...q, text } : q)), "Question saved")))) return;
+  const rename = async (qid: string, text: string, answerSetId: string) => {
+    if (!(await tried(onSave(plain(questions).map((q) => (q.id === qid ? { ...q, text, answerSetId } : q)), "Question saved")))) return;
     setEditing(null);
     focusSoon(`${id}-edit-${qid}`);
   };
@@ -732,6 +797,8 @@ function QuestionList({ questions, fallback, onSave, busy }: { questions: HrQues
           <QuestionEditor
             label="New question"
             initial=""
+            initialSet={answerSets.find((a) => a.id === "yes-somewhat")?.id ?? answerSets[0]?.id ?? ""}
+            answerSets={answerSets}
             busy={busy}
             onSave={add}
             onCancel={() => {
@@ -754,8 +821,10 @@ function QuestionList({ questions, fallback, onSave, busy }: { questions: HrQues
                 <QuestionEditor
                   label="Question"
                   initial={q.text}
+                  initialSet={q.answerSetId}
+                  answerSets={answerSets}
                   busy={busy}
-                  onSave={(t) => rename(q.id, t)}
+                  onSave={(t, a) => rename(q.id, t, a)}
                   onCancel={() => {
                     setEditing(null);
                     focusSoon(`${id}-edit-${q.id}`);
@@ -780,8 +849,8 @@ function QuestionList({ questions, fallback, onSave, busy }: { questions: HrQues
                     <QTag>{qNum(questions, q.id)}</QTag>
                     <span className="flex min-w-0 flex-col">
                       <span className="text-[14.5px] font-semibold">{q.text}</span>
-                      <span className="text-[12.5px]" style={{ color: q.weeks.length ? C.muted : C.amberText }}>
-                        {weeksLabel(q.weeks)}
+                      <span className="text-[12.5px]" style={{ color: C.muted }}>
+                        <span style={{ color: q.weeks.length ? undefined : C.amberText }}>{weeksLabel(q.weeks)}</span> · {setName(answerSets, q.answerSetId)}
                       </span>
                     </span>
                   </button>
@@ -789,7 +858,7 @@ function QuestionList({ questions, fallback, onSave, busy }: { questions: HrQues
                     {q.answers} answer{q.answers === 1 ? "" : "s"}
                   </span>
                   {q.answers ? <StrugglingChip q={q} /> : <span className="text-[13px]" style={{ color: C.muted }}>No answers yet</span>}
-                  <MoodBar q={q} className="w-[120px]" />
+                  <SignalBar q={q} className="w-[120px]" />
                   <span className="flex gap-1">
                     <Button id={`${id}-edit-${q.id}`} variant="ghost" className="!min-h-10 !px-3 text-[13px]" aria-label={`Edit "${q.text}"`} disabled={busy} onClick={() => setEditing(q.id)}>
                       Edit
@@ -832,6 +901,254 @@ function QuestionList({ questions, fallback, onSave, busy }: { questions: HrQues
   );
 }
 
+// Draft of one answer set while HR edits it (new choices have no id until saved)
+type ChoiceDraft = { id: string; label: string; signal: AnswerSignal };
+
+// Edit or create one set of answer choices, with a preview of what new hires will tap
+function AnswerSetEditor({
+  initial,
+  busy,
+  onSave,
+  onCancel,
+}: {
+  initial: AnswerSet;
+  busy: boolean;
+  onSave: (set: AnswerSet) => void;
+  onCancel: () => void;
+}) {
+  const id = useId();
+  const [name, setName] = useState(initial.name);
+  const [choices, setChoices] = useState<ChoiceDraft[]>(initial.choices.map((c) => ({ ...c })));
+  const change = (i: number, next: Partial<ChoiceDraft>) => setChoices((cs) => cs.map((c, k) => (k === i ? { ...c, ...next } : c)));
+  const move = (i: number, by: number) =>
+    setChoices((cs) => {
+      const next = [...cs];
+      [next[i], next[i + by]] = [next[i + by], next[i]];
+      return next;
+    });
+  const ok = !!name.trim() && choices.length >= MIN_CHOICES && choices.every((c) => c.label.trim()) && !busy;
+  const small = "!min-h-10 !px-2.5 text-[13px]";
+
+  return (
+    <form
+      className="flex flex-col gap-3 rounded-xl bg-[color:var(--hr-subtle)] p-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (ok) onSave({ id: initial.id, name: name.trim(), choices: choices.map((c) => ({ ...c, label: c.label.trim() })) });
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
+      <div className="flex max-w-[420px] flex-col gap-1.5">
+        <label htmlFor={`${id}-name`} className="text-[13px] font-semibold">
+          Name
+        </label>
+        <input id={`${id}-name`} autoFocus value={name} maxLength={40} onChange={(e) => setName(e.target.value)} className={`${field} min-h-11`} />
+      </div>
+      <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
+        <legend className="mb-1 p-0 text-[13px] font-semibold">
+          Choices <span className="font-normal" style={{ color: C.muted }}>({MIN_CHOICES} to {MAX_CHOICES}, in the order new hires see them)</span>
+        </legend>
+        {choices.map((c, i) => (
+          <div key={c.id} className="flex flex-wrap items-center gap-2">
+            <label htmlFor={`${id}-c${i}`} className="sr-only">
+              Choice {i + 1}
+            </label>
+            <input
+              id={`${id}-c${i}`}
+              value={c.label}
+              maxLength={30}
+              placeholder={`Choice ${i + 1}`}
+              onChange={(e) => change(i, { label: e.target.value })}
+              className={`${field} min-h-11 !w-auto min-w-[160px] flex-1`}
+            />
+            <label className="flex items-center gap-1.5 text-[13px]" style={{ color: C.muted }}>
+              Means
+              <select
+                value={c.signal}
+                aria-label={`What choice ${i + 1} means`}
+                onChange={(e) => change(i, { signal: e.target.value as AnswerSignal })}
+                className="min-h-11 rounded-xl border border-[color:var(--hr-input-border)] bg-[color:var(--hr-surface)] px-2.5 text-[14px] text-[color:var(--hr-text)]"
+              >
+                {SIGNALS.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button variant="ghost" className={small} aria-label={`Move choice ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)}>
+              <span aria-hidden="true">↑</span>
+            </Button>
+            <Button variant="ghost" className={small} aria-label={`Move choice ${i + 1} down`} disabled={i === choices.length - 1} onClick={() => move(i, 1)}>
+              <span aria-hidden="true">↓</span>
+            </Button>
+            <Button
+              variant="ghost"
+              className={small}
+              aria-label={`Remove choice ${i + 1}`}
+              disabled={choices.length <= MIN_CHOICES}
+              onClick={() => setChoices((cs) => cs.filter((_, k) => k !== i))}
+            >
+              Remove
+            </Button>
+          </div>
+        ))}
+        {choices.length < MAX_CHOICES && (
+          <div>
+            <Button variant="muted" className="!min-h-10 text-[13.5px]" onClick={() => setChoices((cs) => [...cs, { id: `c-${Date.now()}-${cs.length}`, label: "", signal: "okay" }])}>
+              + Add a choice
+            </Button>
+          </div>
+        )}
+      </fieldset>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[13px] font-semibold">New hires will see</span>
+        <div className="grid max-w-[460px] gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.max(1, choices.length)}, minmax(0, 1fr))` }} aria-hidden="true">
+          {choices.map((c) => (
+            <span key={c.id} className="flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-xl border border-[color:var(--hr-border)] bg-[color:var(--hr-surface)] px-1 text-center text-[12px] font-semibold leading-tight">
+              <SignalDot signal={c.signal} />
+              {c.label || "…"}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" disabled={!ok}>
+          {busy ? "Saving…" : "Save choices"}
+        </Button>
+        <Button variant="ghost" disabled={busy} onClick={onCancel}>
+          Cancel
+        </Button>
+        <span className="text-[12.5px]" style={{ color: C.muted }}>
+          Past answers keep the wording and meaning they had when given.
+        </span>
+      </div>
+    </form>
+  );
+}
+
+function AnswerChoices({ sets, questions, onSave, busy }: { sets: AnswerSet[]; questions: HrQuestionStats[]; onSave: SaveAnswerSets; busy: boolean }) {
+  const id = useId();
+  const [editing, setEditing] = useState<string | null>(null); // a set's id, or "new"
+  const [removing, setRemoving] = useState<string | null>(null);
+  const usedBy = (setId: string) => questions.filter((q) => q.answerSetId === setId);
+  const tried = (p: Promise<void>) => p.then(() => true, () => false);
+  const blank: AnswerSet = {
+    id: "",
+    name: "",
+    choices: [
+      { id: "c-a", label: "", signal: "good" },
+      { id: "c-b", label: "", signal: "struggling" },
+    ],
+  };
+
+  const saveSet = async (set: AnswerSet) => {
+    const isNew = editing === "new";
+    const next = isNew ? [...sets, { ...set, id: `a-${Date.now()}` }] : sets.map((a) => (a.id === set.id ? set : a));
+    if (!(await tried(onSave(next, isNew ? `"${set.name}" added. Pick it for a question under Questions & results.` : `"${set.name}" saved`)))) return;
+    setEditing(null);
+    focusSoon(isNew ? `${id}-new` : `${id}-edit-${set.id}`);
+  };
+  const remove = async (setId: string) => {
+    if (!(await tried(onSave(sets.filter((a) => a.id !== setId), "Answer choices removed")))) return;
+    setRemoving(null);
+    focusSoon(`${id}-new`);
+  };
+
+  return (
+    <Card as="section" aria-labelledby={`${id}-title`} className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="mr-auto flex min-w-0 flex-[1_1_320px] flex-col gap-1">
+          <h2 id={`${id}-title`} className="m-0 text-[16px] font-bold">
+            Answer choices <span className="font-semibold" style={{ color: C.muted }}>({sets.length})</span>
+          </h2>
+          <p className="m-0 text-[13px]" style={{ color: C.muted }}>
+            What new hires tap to answer. Word the choices however you like: each one says what it means (Doing well, Okay or Needs help), and that's what
+            the themes, the Overview and the island's tips go by.
+          </p>
+        </div>
+        {editing !== "new" && (
+          <Button id={`${id}-new`} className="!min-h-10 text-[13.5px]" disabled={busy} onClick={() => setEditing("new")}>
+            + New set of choices
+          </Button>
+        )}
+      </div>
+
+      {editing === "new" && <AnswerSetEditor initial={blank} busy={busy} onSave={saveSet} onCancel={() => (setEditing(null), focusSoon(`${id}-new`))} />}
+
+      <ul className="m-0 flex list-none flex-col p-0">
+        {sets.map((a) => {
+          const used = usedBy(a.id);
+          return (
+            <li key={a.id} className="flex flex-col gap-2.5 border-t border-[color:var(--hr-line-soft)] py-3 first:border-0 first:pt-0">
+              {editing === a.id ? (
+                <AnswerSetEditor initial={a} busy={busy} onSave={saveSet} onCancel={() => (setEditing(null), focusSoon(`${id}-edit-${a.id}`))} />
+              ) : (
+                <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+                  <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-2">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <h3 className="m-0 text-[14.5px] font-semibold">{a.name}</h3>
+                      <span className="text-[12.5px]" style={{ color: C.muted }}>
+                        {used.length ? `Used by ${used.map((q) => qNum(questions, q.id)).join(", ")}` : "Not used by any question"}
+                      </span>
+                    </div>
+                    <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0">
+                      {a.choices.map((c) => (
+                        <li key={c.id}>
+                          <Chip bg="var(--hr-neutral-bg)" fg="var(--hr-text2)">
+                            <SignalDot signal={c.signal} />
+                            {c.label}
+                            <span className="font-normal" style={{ color: C.muted }}>
+                              · {signalOf(c.signal).label}
+                            </span>
+                          </Chip>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <span className="flex gap-1">
+                    <Button id={`${id}-edit-${a.id}`} variant="ghost" className="!min-h-10 !px-3 text-[13px]" aria-label={`Edit "${a.name}"`} disabled={busy} onClick={() => setEditing(a.id)}>
+                      Edit
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="!min-h-10 !px-3 text-[13px]"
+                      aria-label={`Remove "${a.name}"`}
+                      title={used.length ? "A question uses these choices. Give it other choices first." : undefined}
+                      disabled={busy || used.length > 0 || sets.length === 1}
+                      onClick={() => setRemoving(a.id)}
+                    >
+                      Remove
+                    </Button>
+                  </span>
+                </div>
+              )}
+              {removing === a.id && (
+                <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl p-3" style={{ background: C.amberBg }}>
+                  <span className="flex-1 text-[13px]" style={{ color: C.amberText }}>
+                    Remove "{a.name}"? Past answers keep their wording.
+                  </span>
+                  <Button variant="dark" className="!min-h-10 text-[13px]" autoFocus disabled={busy} onClick={() => remove(a.id)}>
+                    Remove
+                  </Button>
+                  <Button variant="ghost" className="!min-h-10 text-[13px]" disabled={busy} onClick={() => setRemoving(null)}>
+                    Keep it
+                  </Button>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
+
 function CheckInHistory({ checkIns }: { checkIns: HrCheckIn[] }) {
   const sorted = [...checkIns].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   if (sorted.length === 0) return <Empty>No check-ins yet.</Empty>;
@@ -850,7 +1167,7 @@ function CheckInHistory({ checkIns }: { checkIns: HrCheckIn[] }) {
         </thead>
         <tbody>
           {sorted.map((c) => {
-            const m = MOODS.find((x) => x.id === c.mood)!;
+            const m = signalOf(c.signal);
             return (
               <tr key={c.id} className="border-b border-[color:var(--hr-line-soft)] last:border-0">
                 <th scope="row" className={`${td} text-left font-semibold`}>
@@ -866,8 +1183,11 @@ function CheckInHistory({ checkIns }: { checkIns: HrCheckIn[] }) {
                 <td className={td}>
                   <Chip bg="var(--hr-neutral-bg)" fg="var(--hr-text2)">
                     <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full" style={{ background: m.color }} />
-                    {m.label}
+                    {c.answerLabel}
                   </Chip>
+                  <div className="mt-1 text-[12px]" style={{ color: C.muted }}>
+                    {m.label}
+                  </div>
                 </td>
                 <td className={`${td} max-w-[320px]`}>{c.note || <span style={{ color: C.muted }}>No comment</span>}</td>
                 <td className={`${td} whitespace-nowrap`} style={{ color: C.muted }}>
@@ -882,19 +1202,31 @@ function CheckInHistory({ checkIns }: { checkIns: HrCheckIn[] }) {
   );
 }
 
-export function CheckInsTab({ checkIns, questions, onSaveQuestions }: { checkIns: HrCheckIn[]; questions: HrQuestionStats[]; onSaveQuestions: SaveQuestions }) {
-  const [view, setView] = useState<"questions" | "all">("questions");
+export function CheckInsTab({
+  checkIns,
+  questions,
+  answerSets,
+  onSaveQuestions,
+  onSaveAnswerSets,
+}: {
+  checkIns: HrCheckIn[];
+  questions: HrQuestionStats[];
+  answerSets: AnswerSet[];
+  onSaveQuestions: SaveQuestions;
+  onSaveAnswerSets: SaveAnswerSets;
+}) {
+  const [view, setView] = useState<"questions" | "answers" | "all">("questions");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const asked = questions.filter((q) => q.id !== FALLBACK_QUESTION.id);
   const fallback = questions.find((q) => q.id === FALLBACK_QUESTION.id);
 
   // Every change saves straight away; a failure keeps the editor open (the caller awaits)
-  const save: SaveQuestions = async (next, done) => {
+  const run = async (work: () => Promise<void>) => {
     setBusy(true);
     setError("");
     try {
-      await onSaveQuestions(next, done);
+      await work();
     } catch (e) {
       setError("Couldn't save. Please try again.");
       throw e;
@@ -902,6 +1234,8 @@ export function CheckInsTab({ checkIns, questions, onSaveQuestions }: { checkIns
       setBusy(false);
     }
   };
+  const save: SaveQuestions = (next, done) => run(() => onSaveQuestions(next, done));
+  const saveSets: SaveAnswerSets = (next, done) => run(() => onSaveAnswerSets(next, done));
   const quiet: SaveQuestions = (next, done) => save(next, done).catch(() => {}); // the error is shown above
 
   return (
@@ -911,6 +1245,7 @@ export function CheckInsTab({ checkIns, questions, onSaveQuestions }: { checkIns
         {(
           [
             ["questions", "Questions & results"],
+            ["answers", "Answer choices"],
             ["all", `All check-ins (${checkIns.length})`],
           ] as const
         ).map(([v, label]) => (
@@ -935,14 +1270,14 @@ export function CheckInsTab({ checkIns, questions, onSaveQuestions }: { checkIns
           {error}
         </p>
       )}
-      {view === "questions" ? (
+      {view === "questions" && (
         <>
           <WeekSchedule questions={asked} onSave={quiet} busy={busy} />
-          <QuestionList questions={asked} fallback={fallback} onSave={save} busy={busy} />
+          <QuestionList questions={asked} answerSets={answerSets} fallback={fallback} onSave={save} busy={busy} />
         </>
-      ) : (
-        <CheckInHistory checkIns={checkIns} />
       )}
+      {view === "answers" && <AnswerChoices sets={answerSets} questions={asked} onSave={saveSets} busy={busy} />}
+      {view === "all" && <CheckInHistory checkIns={checkIns} />}
     </div>
   );
 }

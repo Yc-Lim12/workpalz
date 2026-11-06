@@ -2,8 +2,8 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { Action, AssistantMessage, AssistantView, CheckInInput, CheckInQuestion, HandbookInput, IslandStatus, Colleague, IslandEvent, IslandLayout, Ping, PingInput, RequestInput, RequestStatus, Shortcuts } from "../shared/types";
-import { DEFAULT_SHORTCUTS, DRAFT_PLACEHOLDER, GUIDE_SOURCES, MOODS, NEGATIVE_MOODS, REQUEST_CATEGORIES, STATUS_LABEL } from "../shared/types";
+import type { Action, AnswerSet, AssistantMessage, AssistantView, CheckInInput, CheckInQuestion, HandbookInput, IslandStatus, Colleague, IslandEvent, IslandLayout, Ping, PingInput, RequestInput, RequestStatus, Shortcuts } from "../shared/types";
+import { DEFAULT_SHORTCUTS, DRAFT_PLACEHOLDER, GUIDE_SOURCES, REQUEST_CATEGORIES, STATUS_LABEL } from "../shared/types";
 import { loadStore, resetStore, store, storeGeneration } from "./store";
 import { analyse } from "./ai";
 import { answerQuestion } from "./ask";
@@ -274,31 +274,35 @@ function registerIpc() {
   });
 
   ipcMain.handle("me:get", () => me());
-  ipcMain.handle("checkin:question", () => store.questionFor(me().week).text);
+  ipcMain.handle("checkin:question", () => store.prompt(me().week));
   ipcMain.handle("checkin:mine", () => {
     const c = store.myCheckInThisWeek(ME_ID);
-    return c ? { mood: c.mood, note: c.note, shareName: c.shareName, notifyMe: c.notifyMe !== false, createdAt: c.createdAt } : null;
+    return c ? { answer: c.answer, note: c.note, shareName: c.shareName, notifyMe: c.notifyMe !== false, createdAt: c.createdAt } : null;
   });
 
   ipcMain.handle("checkin:add", async (_e, input: CheckInInput) => {
-    if (!MOODS.some((x) => x.id === input?.mood)) throw new Error("Unknown mood");
     const m = me();
-    const note = String(input.note ?? "").trim().slice(0, 280);
+    // Only a choice this week's question offers
     const q = store.questionFor(m.week);
+    const choice = store.answerSetFor(q).choices.find((x) => x.id === input?.answer);
+    if (!choice) throw new Error("Unknown answer");
+    const note = String(input.note ?? "").trim().slice(0, 280);
     store.saveMyCheckIn({
       employeeId: m.id,
       team: m.team,
       week: m.week,
       question: q.text,
       questionId: q.id,
-      mood: input.mood,
+      answer: choice.id,
+      answerLabel: choice.label,
+      signal: choice.signal,
       note,
       shareName: !!input.shareName,
       notifyMe: input.notifyMe !== false,
     });
     broadcastChange();
     // Give something back straight away: a guide tip and the status of a related request
-    return checkInReply(m.id, note, NEGATIVE_MOODS.includes(input.mood));
+    return checkInReply(m.id, note, choice.signal === "struggling");
   });
 
   ipcMain.handle("request:suggest", (_e, text: string) => suggestRequest(String(text ?? ""), { selfHelpOnly: true }));
@@ -405,6 +409,11 @@ function registerIpc() {
   ipcMain.handle("hr:impact", (_e, team: string) => store.hrImpact(team));
   ipcMain.handle("hr:checkins", () => store.hrCheckIns());
   ipcMain.handle("hr:questions", (_e, team: string) => store.hrQuestionStats(String(team ?? "All")));
+  ipcMain.handle("hr:answer-sets", () => store.answerSets());
+  ipcMain.handle("hr:answer-sets-save", (_e, sets: AnswerSet[]) => {
+    store.setAnswerSets(sets);
+    broadcastChange(); // the island shows the new wording straight away
+  });
   ipcMain.handle("hr:questions-save", (_e, questions: CheckInQuestion[]) => {
     store.setQuestions(questions);
     broadcastChange(); // the island picks up the new question for this week

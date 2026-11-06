@@ -37,7 +37,7 @@ function snapshot(view: AssistantView) {
       .hrCheckIns()
       .filter(mine)
       .slice(-MAX_ROWS)
-      .map((c) => ({ team: c.team, week: c.week, mood: c.mood, note: manager ? undefined : c.note, daysAgo: daysAgo(c.createdAt) })),
+      .map((c) => ({ team: c.team, week: c.week, question: c.question, answer: c.answerLabel, needsHelp: c.signal === "struggling", note: manager ? undefined : c.note, daysAgo: daysAgo(c.createdAt) })),
     questions: store
       .hrAsks()
       .filter(mine)
@@ -138,9 +138,9 @@ function answerOffline(question: string, view: AssistantView, d: Snapshot): Assi
     lines.push(`${followUps.length} open follow-up${followUps.length === 1 ? "" : "s"} ${where}.`);
     for (const f of followUps.slice(0, 4)) lines.push(`- ${f.action} (owner: ${f.owner})`);
   } else if (/check.?in|mood|feel|saying|stuck|frustrat|overload/.test(q)) {
-    const notes = d.checkIns.filter((c) => inTeam(c) && c.daysAgo < 7 && ["stuck", "frustrated", "overloaded"].includes(c.mood) && c.note);
-    lines.push(`This week ${where}: ${s.negative} of ${s.checkIns} check-ins said stuck, frustrated or overloaded.`);
-    for (const c of notes.slice(0, 4)) lines.push(`- ${c.mood} (${c.team}): "${c.note}"`);
+    const notes = d.checkIns.filter((c) => inTeam(c) && c.daysAgo < 7 && c.needsHelp && c.note);
+    lines.push(`This week ${where}: ${s.negative} of ${s.checkIns} check-ins said they need help.`);
+    for (const c of notes.slice(0, 4)) lines.push(`- ${c.answer} (${c.team}): "${c.note}"`);
   } else if (themes.length || /theme|problem|issue|struggl|why|worst|most|priority|help/.test(q)) {
     if (!themes.length) lines.push(`No AI themes ${where} yet. Press Analyse on the Overview page first.`);
     for (const t of themes.slice(0, 3)) lines.push(`- ${t.title} (${t.team}, ${t.affected}, ${t.severity}). Suggested: ${t.suggestedAction}`);
@@ -148,7 +148,7 @@ function answerOffline(question: string, view: AssistantView, d: Snapshot): Assi
 
   if (!lines.length || /summar|overview|how is|how are|week/.test(q)) {
     lines.unshift(
-      `This week ${where}: ${s.checkedIn} of ${s.newHires} new hires checked in, ${s.negative} said stuck, frustrated or overloaded, ${s.openRequests} open requests, ${s.unanswered} unanswered questions.`
+      `This week ${where}: ${s.checkedIn} of ${s.newHires} new hires checked in, ${s.negative} said they need help, ${s.openRequests} open requests, ${s.unanswered} unanswered questions.`
     );
   }
   lines.push("(Offline mode: add an OpenAI key for full answers.)");

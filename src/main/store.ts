@@ -10,16 +10,20 @@ import { randomUUID } from "node:crypto";
 import {
   FALLBACK_QUESTION,
   guideLabel,
-  MOODS,
-  NEGATIVE_MOODS,
+  MAX_CHOICES,
+  MIN_CHOICES,
   ONBOARDING_WEEKS,
+  SIGNALS,
   STATUS_LABEL,
   type Action,
   type Analysis,
+  type AnswerSet,
+  type AnswerSignal,
   type Ask,
   type HandbookEntry,
   type HandbookInput,
   type CheckIn,
+  type CheckInPrompt,
   type CheckInQuestion,
   type Employee,
   type HrAsk,
@@ -28,14 +32,13 @@ import {
   type HrQuestionStats,
   type HrRequest,
   type HrStats,
-  type Mood,
   type Notice,
   type Ping,
   type RequestStatus,
   type SupportRequest,
   type Theme,
 } from "../shared/types";
-import { COLLEAGUES, DEFAULT_QUESTIONS, EMPLOYEES, questionForWeek, seedAsks, seedCheckIns, seedRequests } from "./seed";
+import { COLLEAGUES, DEFAULT_ANSWER_SETS, DEFAULT_QUESTIONS, EMPLOYEES, questionForWeek, seedAsks, seedCheckIns, seedRequests } from "./seed";
 import { HANDBOOK } from "./handbook";
 
 // Internal versions keep who contributed, so we can notify them later.
@@ -58,6 +61,7 @@ type Data = {
   handbook: HandbookEntry[]; // entries HR added to fill gaps
   solvedByGuide: { team: string; tipId: string; at: string }[]; // "That fixed it", no ticket needed
   questions: CheckInQuestion[]; // the weekly check-in questions HR set
+  answerSets: AnswerSet[]; // the answer choices HR set
   analysis: InternalAnalysis | null;
 };
 
@@ -85,6 +89,7 @@ function fresh(): Data {
     handbook: [],
     solvedByGuide: [],
     questions: DEFAULT_QUESTIONS.map((q) => ({ ...q, weeks: [...q.weeks] })),
+    answerSets: DEFAULT_ANSWER_SETS.map((a) => ({ ...a, choices: a.choices.map((c) => ({ ...c })) })),
     analysis: null,
   };
 }
@@ -115,10 +120,24 @@ export function loadStore() {
     data.handbook ??= [];
     data.solvedByGuide ??= [];
     data.questions ??= f.questions;
+    data.answerSets ??= f.answerSets;
+    // Questions saved before answer choices existed: the built-in choice for that question, else Mood
+    for (const q of data.questions) q.answerSetId ??= DEFAULT_QUESTIONS.find((d) => d.id === q.id)?.answerSetId ?? "mood";
     data.analysis ??= null;
     for (const a of data.actions) a.contributorIds ??= [];
     for (const t of data.analysis?.themes ?? []) t.contributorIds ??= [];
-    for (const c of data.checkIns) c.questionId ??= data.questions.find((q) => q.text === c.question)?.id;
+    for (const c of data.checkIns) {
+      c.questionId ??= data.questions.find((q) => q.text === c.question)?.id;
+      // Check-ins saved when everyone answered with a mood
+      const old = c as CheckIn & { mood?: string };
+      if (!c.answer && old.mood) {
+        const choice = DEFAULT_ANSWER_SETS[0].choices.find((x) => x.id === old.mood);
+        c.answer = old.mood;
+        c.answerLabel = choice?.label ?? old.mood;
+        c.signal = choice?.signal ?? "okay";
+        delete old.mood;
+      }
+    }
   } catch {
     // Unreadable: keep a copy instead of silently overwriting it, then start fresh
     if (raw !== null) {
@@ -143,25 +162,60 @@ export function resetStore() {
 
 const MAX_QUESTIONS = 50;
 
-// Only clean questions get saved: real text, real weeks, and each week in one question at most
-// (if two claim a week, the first keeps it)
+const MAX_ANSWER_SETS = 20;
+const cleanId = (v: unknown) => (typeof v === "string" && /^[\w-]{1,40}$/.test(v) ? v : null);
+const cleanText = (v: unknown, max: number) => String(v ?? "").trim().replace(/\s+/g, " ").slice(0, max);
+
+// Only clean answer sets get saved: a name, 2 to 6 worded choices, and a meaning for each
+function cleanAnswerSets(input: unknown): AnswerSet[] {
+  if (!Array.isArray(input) || !input.length) throw new Error("Keep at least one set of answer choices");
+  const ids = new Set<string>();
+  const out = input.slice(0, MAX_ANSWER_SETS).map((raw): AnswerSet => {
+    const name = cleanText(raw?.name, 40);
+    if (!name) throw new Error("Every set of answer choices needs a name");
+    const rawChoices = Array.isArray(raw?.choices) ? raw.choices : [];
+    if (rawChoices.length < MIN_CHOICES || rawChoices.length > MAX_CHOICES) throw new Error(`Give ${MIN_CHOICES} to ${MAX_CHOICES} answer choices`);
+    const choiceIds = new Set<string>();
+    const choices = rawChoices.map((c: { id?: unknown; label?: unknown; signal?: unknown }) => {
+      const label = cleanText(c?.label, 30);
+      if (!label) throw new Error("Every answer choice needs some words");
+      const signal = SIGNALS.some((x) => x.id === c?.signal) ? (c.signal as AnswerSignal) : "okay";
+      let id = cleanId(c?.id) ?? randomUUID();
+      if (choiceIds.has(id)) id = randomUUID();
+      choiceIds.add(id);
+      return { id, label, signal };
+    });
+    let id = cleanId(raw?.id) ?? randomUUID();
+    if (ids.has(id)) id = randomUUID();
+    ids.add(id);
+    return { id, name, choices };
+  });
+  // A question must always have choices to show: a set in use can't be removed
+  const inUse = data.questions.find((q) => !out.some((a) => a.id === q.answerSetId));
+  if (inUse) throw new Error(`"${inUse.text}" still uses those answer choices`);
+  return out;
+}
+
+// Only clean questions get saved: real text, real weeks, real answer choices, and each week in one
+// question at most (if two claim a week, the first keeps it)
 function cleanQuestions(input: unknown): CheckInQuestion[] {
   if (!Array.isArray(input)) throw new Error("Questions must be a list");
   const taken = new Set<number>();
   const ids = new Set<string>();
   const out: CheckInQuestion[] = [];
   for (const raw of input.slice(0, MAX_QUESTIONS)) {
-    const text = String(raw?.text ?? "").trim().replace(/\s+/g, " ").slice(0, 140);
+    const text = cleanText(raw?.text, 140);
     if (!text) throw new Error("Every question needs some text");
     const weeks = (Array.isArray(raw?.weeks) ? raw.weeks : [])
       .map(Number)
       .filter((w: number) => Number.isInteger(w) && w >= 1 && w <= ONBOARDING_WEEKS && !taken.has(w));
     const unique = [...new Set<number>(weeks)].sort((a, b) => a - b);
     unique.forEach((w) => taken.add(w));
-    let id = typeof raw?.id === "string" && /^[\w-]{1,40}$/.test(raw.id) && raw.id !== FALLBACK_QUESTION.id ? raw.id : randomUUID();
+    let id = cleanId(raw?.id) && raw.id !== FALLBACK_QUESTION.id ? raw.id : randomUUID();
     if (ids.has(id)) id = randomUUID();
     ids.add(id);
-    out.push({ id, text, weeks: unique });
+    const answerSetId = data.answerSets.some((a) => a.id === raw?.answerSetId) ? raw.answerSetId : data.answerSets[0].id;
+    out.push({ id, text, weeks: unique, answerSetId });
   }
   return out;
 }
@@ -215,6 +269,17 @@ export const store = {
   questionFor: (week: number) => questionForWeek(week, data.questions),
   setQuestions(input: unknown) {
     data.questions = cleanQuestions(input);
+    save();
+  },
+  answerSets: () => data.answerSets,
+  // The choices a question shows (its set, or the first set if that one has gone)
+  answerSetFor: (q: CheckInQuestion) => data.answerSets.find((a) => a.id === q.answerSetId) ?? data.answerSets[0],
+  prompt(week: number): CheckInPrompt {
+    const q = store.questionFor(week);
+    return { text: q.text, choices: store.answerSetFor(q).choices };
+  },
+  setAnswerSets(input: unknown) {
+    data.answerSets = cleanAnswerSets(input);
     save();
   },
 
@@ -354,15 +419,15 @@ export const store = {
     const inTeam = <T extends { team: string }>(x: T) => team === "All" || x.team === team;
     const people = data.employees.filter(inTeam);
     const recent = data.checkIns.filter((c) => inTeam(c) && inLastWeek(c.createdAt));
-    const moodCounts = { great: 0, okay: 0, stuck: 0, frustrated: 0, overloaded: 0 } as Record<Mood, number>;
-    for (const c of recent) moodCounts[c.mood]++;
+    const signalCounts = { good: 0, okay: 0, struggling: 0 } as Record<AnswerSignal, number>;
+    for (const c of recent) signalCounts[c.signal]++;
     const asks = data.asks.filter((a) => inTeam(a) && inLastWeek(a.createdAt));
     return {
       newHires: people.length,
       checkedIn: new Set(recent.map((c) => c.employeeId)).size,
       checkIns: recent.length,
-      negative: recent.filter((c) => NEGATIVE_MOODS.includes(c.mood)).length,
-      moodCounts,
+      negative: signalCounts.struggling,
+      signalCounts,
       openRequests: data.requests.filter((r) => inTeam(r) && r.status !== "resolved").length,
       unanswered: asks.filter((a) => !a.answered).length,
       questions: asks.length,
@@ -372,12 +437,20 @@ export const store = {
   // Per question: how many answered and how it felt. Counts only, never who.
   hrQuestionStats(team: string): HrQuestionStats[] {
     const inTeam = <T extends { team: string }>(x: T) => team === "All" || x.team === team;
-    const struggling = (cs: CheckIn[]) => cs.filter((c) => NEGATIVE_MOODS.includes(c.mood)).length;
+    const struggling = (cs: CheckIn[]) => cs.filter((c) => c.signal === "struggling").length;
     return [...data.questions, FALLBACK_QUESTION]
       .map((q) => {
         const answers = data.checkIns.filter((c) => inTeam(c) && c.questionId === q.id);
-        const moodCounts = Object.fromEntries(MOODS.map((m) => [m.id, 0])) as Record<Mood, number>;
-        for (const c of answers) moodCounts[c.mood]++;
+        const signalCounts = { good: 0, okay: 0, struggling: 0 } as Record<AnswerSignal, number>;
+        for (const c of answers) signalCounts[c.signal]++;
+        // Today's choices first, then answers to choices HR has since removed or reworded, as people saw them
+        const choiceCounts: HrQuestionStats["choiceCounts"] = store.answerSetFor(q).choices.map((c) => ({ ...c, count: 0, current: true }));
+        for (const c of answers) {
+          let row = choiceCounts.find((x) => x.current && x.id === c.answer && x.signal === c.signal);
+          row ??= choiceCounts.find((x) => !x.current && x.label === c.answerLabel && x.signal === c.signal);
+          if (!row) choiceCounts.push((row = { id: c.answer, label: c.answerLabel, signal: c.signal, count: 0, current: false }));
+          row.count++;
+        }
         // The team where this question goes worst, when HR is looking at every team
         let hardestTeam: HrQuestionStats["hardestTeam"] = null;
         if (team === "All") {
@@ -393,7 +466,8 @@ export const store = {
           people: new Set(answers.map((c) => c.employeeId)).size,
           thisWeek: answers.filter((c) => inLastWeek(c.createdAt)).length,
           struggling: struggling(answers),
-          moodCounts,
+          signalCounts,
+          choiceCounts,
           hardestTeam,
         };
       })

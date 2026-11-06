@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { MOODS, REQUEST_CATEGORIES, STATUS_LABEL, type AskResult, type Availability, type CheckInReply, type MyCheckIn, type Colleague, type ColleagueSuggestion, type GuideTip, type Ping, type PingInput, type RequestSuggestion, type CheckInInput, type Mood, type MyDataSummary, type Notice, type RequestCategory, type RequestInput, type Shortcuts, type SupportRequest, DEFAULT_SHORTCUTS } from "../../../shared/types";
+import { REQUEST_CATEGORIES, signalOf, type CheckInPrompt, STATUS_LABEL, type AskResult, type Availability, type CheckInReply, type MyCheckIn, type Colleague, type ColleagueSuggestion, type GuideTip, type Ping, type PingInput, type RequestSuggestion, type CheckInInput, type MyDataSummary, type Notice, type RequestCategory, type RequestInput, type Shortcuts, type SupportRequest, DEFAULT_SHORTCUTS } from "../../../shared/types";
 import { AMBER, BLUE, MUTED } from "./theme";
 import { Btn, Choice, Dot, Header, inputClass } from "./ui";
 
@@ -63,10 +63,12 @@ export function MenuView(p: { pending: boolean; doneThisWeek: boolean; focusRunn
   );
 }
 
-export function CheckInView(p: { question: string; existing: MyCheckIn | null; onSubmit: (i: CheckInInput) => Promise<void>; onClose: () => void; onBack: () => void; }) {
+export function CheckInView(p: { prompt: CheckInPrompt; existing: MyCheckIn | null; onSubmit: (i: CheckInInput) => Promise<void>; onClose: () => void; onBack: () => void; }) {
   // Already checked in this week: start from that answer, and saving changes it
   const e = p.existing;
-  const [mood, setMood] = useDraft<Mood | null>("ci.mood", e?.mood ?? null);
+  const [picked, setAnswer] = useDraft<string | null>("ci.answer", e?.answer ?? null);
+  // HR may have changed the choices since: an old pick that's no longer offered counts as none
+  const answer = p.prompt.choices.some((c) => c.id === picked) ? picked : null;
   const [note, setNote] = useDraft("ci.note", e?.note ?? "");
   const [shareName, setShareName] = useDraft("ci.share", e?.shareName ?? false);
   const [notifyMe, setNotifyMe] = useDraft("ci.notify", e?.notifyMe ?? true);
@@ -74,10 +76,10 @@ export function CheckInView(p: { question: string; existing: MyCheckIn | null; o
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!mood || sending) return;
+    if (!answer || sending) return;
     setSending(true);
     try {
-      await p.onSubmit({ mood, note: note.trim(), shareName, notifyMe });
+      await p.onSubmit({ answer, note: note.trim(), shareName, notifyMe });
       clearDrafts("ci.");
     } finally {
       setSending(false);
@@ -93,14 +95,18 @@ export function CheckInView(p: { question: string; existing: MyCheckIn | null; o
         </p>
       )}
       <fieldset className="m-0 flex flex-col gap-3 border-0 p-0">
-        <legend className="mb-3 p-0 text-[17px] font-semibold leading-snug [color:var(--ink)]">{p.question}</legend>
-        <div className="grid grid-cols-5 gap-1.5">
-          {MOODS.map((m) => (
-            <Choice key={m.id} type="radio" name="mood" checked={mood === m.id} onChange={() => setMood(m.id)} activeBg={m.color} className="min-h-[60px] flex-col gap-1.5 text-[12px] [background-color:var(--bg)] [color:var(--ink)]">
-              <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full" style={{ background: mood === m.id ? "var(--surface)" : m.color }} />
-              {m.label}
-            </Choice>
-          ))}
+        <legend className="mb-3 p-0 text-[17px] font-semibold leading-snug [color:var(--ink)]">{p.prompt.text}</legend>
+        {/* HR words the choices: 2 to 6, always in one row */}
+        <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.max(1, p.prompt.choices.length)}, minmax(0, 1fr))` }}>
+          {p.prompt.choices.map((c) => {
+            const color = signalOf(c.signal).color;
+            return (
+              <Choice key={c.id} type="radio" name="answer" checked={answer === c.id} onChange={() => setAnswer(c.id)} activeBg={color} className="min-h-[60px] flex-col gap-1.5 px-1 text-[12px] leading-tight [background-color:var(--bg)] [color:var(--ink)]">
+                <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full" style={{ background: answer === c.id ? "var(--surface)" : color }} />
+                {c.label}
+              </Choice>
+            );
+          })}
         </div>
       </fieldset>
 
@@ -124,7 +130,7 @@ export function CheckInView(p: { question: string; existing: MyCheckIn | null; o
       </fieldset>
 
       <div className="flex gap-2">
-        <Btn type="submit" variant="primary" className="flex-[2]" disabled={!mood || sending}>{sending ? "Sending…" : e ? "Update" : "Send"}</Btn>
+        <Btn type="submit" variant="primary" className="flex-[2]" disabled={!answer || sending}>{sending ? "Sending…" : e ? "Update" : "Send"}</Btn>
         <Btn className="flex-1" onClick={p.onClose}>Not now</Btn>
       </div>
     </form>

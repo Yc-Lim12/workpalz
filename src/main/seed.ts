@@ -1,5 +1,5 @@
 // Fictional demo data for "Lumora Tech". No real people.
-import { FALLBACK_QUESTION, type Ask, type CheckIn, type CheckInQuestion, type Colleague, type Employee, type Mood, type RequestCategory, type RequestStatus, type SupportRequest } from "../shared/types";
+import { FALLBACK_QUESTION, type AnswerSet, type Ask, type CheckIn, type CheckInQuestion, type Colleague, type Employee, type RequestCategory, type RequestStatus, type SupportRequest } from "../shared/types";
 
 export const ME_ID = "e5"; // the employee using the island in the demo
 
@@ -26,13 +26,49 @@ export const COLLEAGUES: Colleague[] = [
   { id: "p6", name: "Marcus Tan", role: "Finance Analyst", team: "Finance", helpsWith: ["Expense claims", "Payroll", "Month-end"], availability: "available" },
 ];
 
+// Answer choices HR can reword, extend or replace on the Check-ins tab.
+// Each choice says what it means (Doing well / Okay / Needs help): that's what themes and tips use.
+export const DEFAULT_ANSWER_SETS: AnswerSet[] = [
+  {
+    id: "mood",
+    name: "Mood",
+    choices: [
+      { id: "great", label: "Great", signal: "good" },
+      { id: "okay", label: "Okay", signal: "okay" },
+      { id: "stuck", label: "Stuck", signal: "struggling" },
+      { id: "frustrated", label: "Frustrated", signal: "struggling" },
+      { id: "overloaded", label: "Overloaded", signal: "struggling" },
+    ],
+  },
+  {
+    id: "yes-somewhat",
+    name: "Yes / Somewhat / Not yet",
+    choices: [
+      { id: "yes", label: "Yes", signal: "good" },
+      { id: "somewhat", label: "Somewhat", signal: "okay" },
+      { id: "not-yet", label: "Not yet", signal: "struggling" },
+    ],
+  },
+  {
+    id: "scale",
+    name: "1 to 5",
+    choices: [
+      { id: "1", label: "1 Not at all", signal: "struggling" },
+      { id: "2", label: "2", signal: "struggling" },
+      { id: "3", label: "3", signal: "okay" },
+      { id: "4", label: "4", signal: "good" },
+      { id: "5", label: "5 Very", signal: "good" },
+    ],
+  },
+];
+
 // The weekly question changes with the onboarding stage. HR can change these on the Check-ins tab.
 // Belonging is asked from week 3, not left until the end: losing connection shows early.
 export const DEFAULT_QUESTIONS: CheckInQuestion[] = [
-  { id: "tools", text: "Do you have the tools and access you need this week?", weeks: [1, 2] },
-  { id: "belonging", text: "Do you feel part of the team?", weeks: [3, 8, 9, 10, 11, 12] },
-  { id: "priorities", text: "How clear are your priorities right now?", weeks: [4, 5] },
-  { id: "feedback", text: "Are you getting enough feedback from your manager?", weeks: [6, 7] },
+  { id: "tools", text: "Do you have the tools and access you need this week?", weeks: [1, 2], answerSetId: "yes-somewhat" },
+  { id: "belonging", text: "Do you feel part of the team?", weeks: [3, 8, 9, 10, 11, 12], answerSetId: "yes-somewhat" },
+  { id: "priorities", text: "How clear are your priorities right now?", weeks: [4, 5], answerSetId: "scale" },
+  { id: "feedback", text: "Are you getting enough feedback from your manager?", weeks: [6, 7], answerSetId: "yes-somewhat" },
 ];
 
 export const questionForWeek = (week: number, questions = DEFAULT_QUESTIONS): CheckInQuestion =>
@@ -48,36 +84,37 @@ const daysAgo = (d: number, hour = 15) => {
 const emp = (id: string) => EMPLOYEES.find((e) => e.id === id)!;
 
 // ---------- Check-ins ----------
-// [employeeId, daysAgo, mood, note, shareName]
-type C = [string, number, Mood, string, boolean];
+// [employeeId, daysAgo, answer (a choice in that week's question), note, shareName]
+type C = [string, number, string, string, boolean];
 
 const CHECKINS: C[] = [
-  // This week. Engineering: 3 of 5 blocked on tools/access (live demo adds the 4th).
-  ["e1", 1, "frustrated", "Still waiting on my IDE and database licences, borrowing a teammate's laptop to test.", false],
-  ["e2", 1, "stuck", "No access to the staging server yet so I can't run the project.", true],
-  ["e3", 2, "frustrated", "My software licence request has been pending for 6 days.", false],
-  ["e4", 2, "okay", "Settling in, my buddy has been helpful.", false],
-  // Marketing: unclear priorities
-  ["m1", 1, "stuck", "Not sure which campaign is the priority, got two different answers.", false],
-  ["m2", 2, "frustrated", "Unclear what success looks like for my first project.", true],
-  ["m3", 1, "okay", "Good week, the team lunch helped.", false],
-  // Finance: fine
-  ["f1", 2, "great", "Quick feedback from my manager in our weekly 1:1.", true],
+  // This week. Engineering (week 1-2, "tools and access"): 3 of 5 blocked (live demo adds the 4th).
+  ["e1", 1, "not-yet", "Still waiting on my IDE and database licences, borrowing a teammate's laptop to test.", false],
+  ["e2", 1, "not-yet", "No access to the staging server yet so I can't run the project.", true],
+  ["e3", 2, "not-yet", "My software licence request has been pending for 6 days.", false],
+  ["e4", 2, "yes", "Settling in, my buddy has been helpful.", false],
+  // Marketing: unclear priorities (week 4, 1 to 5), belonging (week 3)
+  ["m1", 1, "2", "Not sure which campaign is the priority, got two different answers.", false],
+  ["m2", 2, "1", "Unclear what success looks like for my first project.", true],
+  ["m3", 1, "yes", "Good week, the team lunch helped.", false],
+  // Finance: fine (week 6, feedback)
+  ["f1", 2, "yes", "Quick feedback from my manager in our weekly 1:1.", true],
   // Last week
-  ["e1", 8, "stuck", "Laptop arrived without the dev tools installed.", false],
-  ["e2", 8, "okay", "Learning the codebase.", false],
-  ["e3", 9, "okay", "Good onboarding sessions.", false],
-  ["m1", 8, "okay", "Getting to know the team.", false],
-  ["m2", 9, "okay", "Lots of reading this week.", false],
-  ["f1", 9, "great", "Clear plan for the month.", false],
-  ["f2", 8, "okay", "Learning the month-end process.", false],
+  ["e1", 8, "not-yet", "Laptop arrived without the dev tools installed.", false],
+  ["e2", 8, "somewhat", "Learning the codebase.", false],
+  ["e3", 9, "yes", "Good onboarding sessions.", false],
+  ["m1", 8, "somewhat", "Getting to know the team.", false],
+  ["m2", 9, "somewhat", "Lots of reading this week.", false],
+  ["f1", 9, "5", "Clear plan for the month.", false],
+  ["f2", 8, "somewhat", "Learning the month-end process.", false],
 ];
 
 export function seedCheckIns(): CheckIn[] {
-  return CHECKINS.map(([employeeId, d, mood, note, shareName], i) => {
+  return CHECKINS.map(([employeeId, d, answer, note, shareName], i) => {
     const e = emp(employeeId);
     const week = d >= 7 ? Math.max(1, e.week - 1) : e.week;
     const q = questionForWeek(week);
+    const choice = DEFAULT_ANSWER_SETS.find((a) => a.id === q.answerSetId)!.choices.find((c) => c.id === answer)!;
     return {
       id: `c${i}`,
       employeeId,
@@ -85,7 +122,9 @@ export function seedCheckIns(): CheckIn[] {
       week,
       question: q.text,
       questionId: q.id,
-      mood,
+      answer: choice.id,
+      answerLabel: choice.label,
+      signal: choice.signal,
       note,
       shareName,
       notifyMe: true,

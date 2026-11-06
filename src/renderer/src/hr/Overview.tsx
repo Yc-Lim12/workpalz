@@ -2,7 +2,7 @@
 // Layout follows the order HR scans in: the main action top right, a slim number strip,
 // the AI themes (what to act on) in the main column, mood and impact in a side column.
 import type React from "react";
-import { MOODS, type Action, type Analysis, type HrImpact, type HrStats, type Theme } from "../../../shared/types";
+import { SIGNALS, type Action, type Analysis, type HrImpact, type HrStats, type Theme } from "../../../shared/types";
 import { Button, C, Card, Chip, Empty, SOURCE_LABEL, ago } from "./ui";
 
 const SEVERITY = {
@@ -90,7 +90,7 @@ export default function Overview(p: {
             value={`${s.checkedIn} of ${s.newHires}`}
             sub={`${Math.round((s.checkedIn / Math.max(s.newHires, 1)) * 100)}% response rate`}
           />
-          <Stat icon="alert" label="Said stuck, frustrated or overloaded" value={String(s.negative)} sub={`of ${s.checkIns} check-ins`} warn={s.negative > 0} />
+          <Stat icon="alert" label="Said they need help" value={String(s.negative)} sub={`of ${s.checkIns} check-ins`} warn={s.negative > 0} />
           <Stat icon="inbox" label="Open IT/HR requests" value={String(s.openRequests)} />
           <Stat icon="help" label="Questions with no answer" value={String(s.unanswered)} sub={`of ${s.questions} asked`} warn={s.unanswered > 0} />
         </section>
@@ -252,19 +252,19 @@ function ThemeCard({ t, manager, action, onCreate }: { t: Theme; manager: boolea
 }
 
 function Mood({ stats: s }: { stats: HrStats }) {
-  const total = Object.values(s.moodCounts).reduce((a, b) => a + b, 0);
+  const total = Object.values(s.signalCounts).reduce((a, b) => a + b, 0);
   if (!total) return null;
   return (
     <Card as="section" className="flex flex-col gap-3">
       <h2 className="m-0 text-[15px] font-bold">How check-ins felt</h2>
       <div className="flex h-2.5 gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
-        {MOODS.map((m) => (s.moodCounts[m.id] ? <div key={m.id} style={{ flex: s.moodCounts[m.id], background: m.color }} /> : null))}
+        {SIGNALS.map((m) => (s.signalCounts[m.id] ? <div key={m.id} style={{ flex: s.signalCounts[m.id], background: m.color }} /> : null))}
       </div>
       <ul className="m-0 grid list-none grid-cols-2 gap-x-3 gap-y-1 p-0 text-[12.5px]" style={{ color: C.muted }}>
-        {MOODS.map((m) => (
+        {SIGNALS.map((m) => (
           <li key={m.id} className="flex items-center gap-1.5">
             <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full" style={{ background: m.color }} />
-            {m.label}: <span className="font-semibold text-[color:var(--hr-text)]">{s.moodCounts[m.id]}</span>
+            {m.label}: <span className="font-semibold text-[color:var(--hr-text)]">{s.signalCounts[m.id]}</span>
           </li>
         ))}
       </ul>

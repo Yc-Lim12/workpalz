@@ -191,7 +191,8 @@ check("Check-in prompt pulses in the pill", (await island.locator(".island-shell
 await island.getByRole("button", { name: /Weekly check-in is ready/ }).click();
 await settle();
 check("Question matches onboarding week 2", (await island.locator("legend").first().innerText()).includes("tools and access"));
-await island.getByText("Frustrated", { exact: true }).click();
+check("Tools question offers Yes / Somewhat / Not yet", (await island.locator("fieldset").first().innerText()).includes("Somewhat"));
+await island.getByText("Not yet", { exact: true }).click();
 await island.locator("#ci-note").fill("Still waiting on my software licence");
 check("Check-in offers 'Tell me if HR acts on this', ticked by default", await island.getByLabel(/Tell me if HR acts on this/).isChecked());
 await shot(island, "checkin-form");
@@ -450,7 +451,7 @@ await shot(hr, "hr-checkin-questions", null);
 await axe(hr, "HR check-in questions");
 const cq = await hr.locator("main").innerText();
 check("Belonging is asked from week 3", cq.includes("Do you feel part of the team?") && cq.includes("Weeks 3, 8–12"));
-check("Each question shows its stats", /\d+% struggling/.test(cq));
+check("Each question shows its stats", /\d+% need help/.test(cq));
 
 // The weekly schedule: HR moves week 2 (Mei Ling's week) to the belonging question in one step
 await hr.getByLabel("Week 2", { exact: true }).selectOption({ label: "Q2 · Do you feel part of the team?" });
@@ -470,14 +471,47 @@ check("New question is added, not scheduled yet", added.includes("Do you know wh
 // Opening a question shows its full breakdown
 await hr.getByRole("button", { name: /^Q1 Do you have the tools/ }).click();
 await hr.waitForTimeout(200);
-check("Opening a question shows the mood breakdown", /Hardest for Engineering/.test(await hr.locator("main").innerText()));
+const details = await hr.locator("main").innerText();
+check("Opening a question shows each answer choice", /Hardest for Engineering/.test(details) && /Not yet\s*\(needs help\)\s*:\s*\d/.test(details));
 await axe(hr, "HR check-in question details");
+
+// Answer choices: HR creates a new set, then gives it to the belonging question
+await hr.getByRole("button", { name: "Answer choices" }).click();
+await hr.waitForTimeout(200);
+check("Built-in answer choices are listed", (await hr.locator("main").innerText()).includes("Yes / Somewhat / Not yet"));
+await hr.getByRole("button", { name: "+ New set of choices" }).click();
+await hr.getByLabel("Name", { exact: true }).fill("Connection");
+await hr.getByLabel("Choice 1", { exact: true }).fill("Very connected");
+await hr.getByLabel("Choice 2", { exact: true }).fill("On my own");
+await hr.getByRole("button", { name: "+ Add a choice" }).click();
+await hr.getByLabel("Choice 3", { exact: true }).fill("A bit");
+await hr.getByLabel("What choice 3 means").selectOption("okay");
+await hr.getByRole("button", { name: "Move choice 3 up" }).click(); // "A bit" goes in the middle
+await hr.waitForTimeout(300);
+await axe(hr, "HR answer choices editor");
+await shot(hr, "hr-answer-choices-editor", null);
+await hr.getByRole("button", { name: "Save choices" }).click();
+await hr.waitForTimeout(400);
+const sets = await hr.locator("main").innerText();
+check("New set of answer choices is saved", sets.includes("Connection") && sets.includes("On my own") && sets.includes("Not used by any question"));
+check("A set a question uses can't be removed", await hr.getByRole("button", { name: 'Remove "Yes / Somewhat / Not yet"' }).isDisabled());
+
+await hr.getByRole("button", { name: "Questions & results" }).click();
+await hr.getByRole("button", { name: 'Edit "Do you feel part of the team?"' }).click();
+await hr.getByLabel("Answer choices").selectOption({ label: "Connection" });
+check("Question editor previews the choices", (await hr.locator("main").innerText()).includes("New hires tap: Very connected · A bit · On my own"));
+await hr.getByRole("button", { name: "Save", exact: true }).click();
+await hr.waitForTimeout(400);
+check("Question now uses the new choices", (await hr.locator("main").innerText()).includes("Weeks 2–3, 8–12 · Connection"));
 
 await hook("sendIsland", { type: "checkin-prompt" });
 await settle();
 await island.getByRole("button", { name: /Weekly check-in is ready/ }).click();
 await settle();
-check("The island asks HR's new question", (await island.locator(".island-shell").innerText()).includes("Do you feel part of the team?"));
+const ask = await island.locator(".island-shell").innerText();
+check("The island asks HR's new question with HR's choices", ask.includes("Do you feel part of the team?") && ask.includes("Very connected") && ask.includes("On my own"));
+await axe(island, "island check-in with HR's choices");
+await shot(island, "checkin-hr-choices");
 await island.keyboard.press("Escape");
 await settle();
 

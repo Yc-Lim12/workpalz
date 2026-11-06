@@ -3,7 +3,7 @@
 //   2. questions the company guide couldn't answer (onboarding gaps)
 //   3. open IT/HR requests
 // OpenAI when a key is set; offline rule-based analyser otherwise or if the call fails.
-import { NEGATIVE_MOODS, REQUEST_CATEGORIES, type Employee, type EvidenceSource, type Theme } from "../shared/types";
+import { REQUEST_CATEGORIES, type Employee, type EvidenceSource, type Theme } from "../shared/types";
 import { inLastWeek, inWeekBefore, store, type InternalAnalysis, type InternalTheme } from "./store";
 import { aiJson } from "./openai";
 
@@ -16,7 +16,7 @@ function collectSignals() {
   const period = (iso: string) => (inLastWeek(iso) ? "this" : inWeekBefore(iso) ? "last" : null);
 
   for (const c of store.checkIns()) {
-    if (!NEGATIVE_MOODS.includes(c.mood) || !c.note) continue;
+    if (c.signal !== "struggling" || !c.note) continue;
     push(period(c.createdAt), { employeeId: c.employeeId, team: c.team, source: "check-in", text: c.note });
   }
   for (const a of store.asks()) {
@@ -113,7 +113,7 @@ async function analyseWithAi(thisWeek: Signal[], lastWeek: Signal[], employees: 
     }[];
   }>(`You help an HR team spot early onboarding problems for new hires (first 90 days).
 All data below is VOLUNTARY and anonymised. Sources:
-- "check-in": a weekly check-in where the person said they were stuck, frustrated or overloaded
+- "check-in": a weekly check-in where the person picked an answer that means they need help
 - "question": a question the company guide (handbook, IT help, glossary) could NOT answer (an onboarding gap)
 - "request": an open IT/HR request
 

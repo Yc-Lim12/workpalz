@@ -37,7 +37,8 @@ New employees often struggle quietly in their first months: missing tools, uncle
 - **Ask AI**: one assistant on every page that knows the whole dashboard. Ask "Which team needs help most?" or "Summarise this week for managers".
 - **Fill gaps in the company guide with AI**: for questions the guide couldn't answer, the AI drafts an entry and suggests where it belongs (formal policy goes in the Employee Handbook, server access in the IT Help Centre, jargon in the Team Glossary); HR can change it. Anything company-specific is left as `[HR: …]`, and publishing stays locked until HR fills it in. Publishing updates Ask WorkPalz straight away and tells everyone who asked.
 - **Manager view**: a team manager sees only their own team, as patterns. No check-in notes, quotes or single requests. Their AI assistant gets the same limited data.
-- **Check-in questions** (Check-ins → Questions & results): a 12-week **schedule** where each week's question is one dropdown, and a question list where HR adds, edits and removes questions in place (search and sort once the list grows). Each question shows its answers and how many are struggling; open it for the mood breakdown and which team finds it hardest. Counts only.
+- **Check-in questions** (Check-ins → Questions & results): a 12-week **schedule** where each week's question is one dropdown, and a question list where HR adds, edits and removes questions in place (search and sort once the list grows). Each question shows its answers and how many need help; open it for each answer choice and which team finds it hardest. Counts only.
+- **Answer choices** (Check-ins → Answer choices): each question picks how new hires answer: **Mood**, **Yes / Somewhat / Not yet**, **1 to 5**, or a set HR creates. HR words the choices (2 to 6, in any order) and says what each one means: *Doing well*, *Okay* or *Needs help*. That meaning is what the AI themes, the Overview and the island's "you said you're stuck" tip go by, so rewording never breaks them. Past answers keep the wording and meaning they had; a set a question still uses can't be removed.
 - **Requests** board, **Questions** (company guide gaps + popular topics), **Check-ins** history, team filter, light and dark mode.
 
 ## Responsible AI and privacy
@@ -77,8 +78,8 @@ Without a key, WorkPalz uses its offline analyser, company guide search and simp
 | Command | What it does |
 |---|---|
 | `npm run dev` | Run the app |
-| `npm test` | Run the logic tests (32) |
-| `npm run build && npm run test:e2e` | Drive the real app through every feature, screenshot it and run a WCAG scan on every screen (108 checks) |
+| `npm test` | Run the logic tests (38) |
+| `npm run build && npm run test:e2e` | Drive the real app through every feature, screenshot it and run a WCAG scan on every screen (116 checks) |
 | `npm run typecheck` | TypeScript check |
 | `npm run dist:win` | Build a Windows installer (run on Windows) |
 | `npm run dist:mac` | Build a macOS .dmg |

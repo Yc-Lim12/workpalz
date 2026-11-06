@@ -48,6 +48,8 @@ const api: WorkPalzApi = {
   hrCheckIns: call("hr:checkins"),
   hrQuestions: call("hr:questions"),
   saveQuestions: call("hr:questions-save"),
+  hrAnswerSets: call("hr:answer-sets"),
+  saveAnswerSets: call("hr:answer-sets-save"),
   hrAsks: call("hr:asks"),
   hrRequests: call("hr:requests"),
   setRequestStatus: call("hr:request-status"),

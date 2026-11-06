@@ -4,7 +4,7 @@ import Island, { type PillInfo } from "./Island";
 import { AMBER, BLUE, type IslandView } from "./theme";
 import { AskView, CheckInThanksView, CheckInView, clearAskHistory, clearDrafts, MenuView, NoticeView, PingView, PrivacyView, RequestView, SettingsView, StepBackView, TourView, displayShortcut, isMac, loadShortcuts } from "./views";
 import { REQUEST_CATEGORIES } from "../../../shared/types";
-import type { MyCheckIn, CheckInReply, Colleague, Employee, IslandLayout, Notice, Ping, SupportRequest } from "../../../shared/types";
+import type { CheckInPrompt, MyCheckIn, CheckInReply, Colleague, Employee, IslandLayout, Notice, Ping, SupportRequest } from "../../../shared/types";
 
 const api = window.workpalz;
 const FOCUS_MS = 25 * 60 * 1000;
@@ -34,7 +34,9 @@ export default function IslandApp() {
   const [view, setView] = useState<IslandView>("pill");
   const [layout, setLayout] = useState<IslandLayout>({ notch: false, topInset: 0 });
   const [me, setMe] = useState<Employee | null>(null);
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState<CheckInPrompt>({ text: "", choices: [] });
+  // Every data change fetches it again: only re-render the island when it actually changed
+  const keepQuestion = useCallback((next: CheckInPrompt) => setQuestion((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next)), []);
   const [pending, setPending] = useState(false);
   const [requests, setRequests] = useState<SupportRequest[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -217,7 +219,7 @@ export default function IslandApp() {
     document.documentElement.setAttribute("data-theme", savedTheme);
 
     api.getMe().then(setMe);
-    api.getQuestion().then(setQuestion);
+    api.getQuestion().then(keepQuestion);
     api.getLayout().then(setLayout);
     api.listColleagues().then(setColleagues);
     refresh();
@@ -234,7 +236,7 @@ export default function IslandApp() {
     const stop = api.onDataChanged(() => {
       refresh();
       api.getMe().then(setMe);
-      api.getQuestion().then(setQuestion); // HR may have changed this week's question
+      api.getQuestion().then(keepQuestion); // HR may have changed this week's question or its choices
     });
     return () => {
       window.clearTimeout(tour);
@@ -506,7 +508,7 @@ export default function IslandApp() {
             )}
             {view === "checkin" && (
               <CheckInView
-                question={question}
+                prompt={question}
                 existing={myCheckIn}
                 onClose={collapse}
                 onBack={() => open("menu")}

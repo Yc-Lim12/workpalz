@@ -11,6 +11,10 @@ const { loadStore, resetStore, store } = await import("../src/main/store");
 const { analyse } = await import("../src/main/ai");
 const { answerQuestion } = await import("../src/main/ask");
 
+// Answers as the island would save them
+const NOT_YET = { answer: "not-yet", answerLabel: "Not yet", signal: "struggling" } as const;
+const YES = { answer: "yes", answerLabel: "Yes", signal: "good" } as const;
+
 const find = (themes: { title: string; team: string }[], title: RegExp, team: string) =>
   themes.find((t) => title.test(t.title) && t.team === team) as any;
 
@@ -37,7 +41,7 @@ describe("AI themes (offline analyser)", () => {
   });
 
   it("the live demo check-in moves Engineering from 3 to 4 of 5", async () => {
-    store.addCheckIn({ employeeId: "e5", team: "Engineering", week: 2, question: "q", mood: "frustrated", note: "Still waiting on my software licences", shareName: false });
+    store.addCheckIn({ employeeId: "e5", team: "Engineering", week: 2, question: "q", ...NOT_YET, note: "Still waiting on my software licences", shareName: false });
     const a = await analyse();
     expect(find(a.themes, /tools/, "Engineering").affected).toBe(4);
   });
@@ -85,7 +89,7 @@ describe("Privacy", () => {
 
 describe("Closing the loop", () => {
   it("finishing a follow-up notifies the people who raised it", async () => {
-    store.addCheckIn({ employeeId: "e5", team: "Engineering", week: 2, question: "q", mood: "frustrated", note: "waiting on licence", shareName: false });
+    store.addCheckIn({ employeeId: "e5", team: "Engineering", week: 2, question: "q", ...NOT_YET, note: "waiting on licence", shareName: false });
     store.setAnalysis(await analyse());
     const theme = find(store.hrAnalysis()!.themes, /tools/, "Engineering");
     store.addAction(theme.id);
@@ -126,7 +130,7 @@ describe("Ping a colleague", () => {
 describe("HR assistant", () => {
   it("answers offline from the dashboard data and never leaks names", async () => {
     const { askAssistant } = await import("../src/main/assistant");
-    store.addCheckIn({ employeeId: "e2", team: "Engineering", week: 2, question: "q", mood: "stuck", note: "Blocked on staging", shareName: true });
+    store.addCheckIn({ employeeId: "e2", team: "Engineering", week: 2, question: "q", ...NOT_YET, note: "Blocked on staging", shareName: true });
     const r = await askAssistant([{ role: "user", text: "Which requests have waited longest in Engineering?" }], { tab: "requests", team: "All", role: "hr" });
     expect(r.source).toBe("offline");
     expect(r.answer).toMatch(/open request/);
@@ -194,7 +198,7 @@ describe("Anonymous, but you can still hear back", () => {
     store.setAnalysis(a);
     const tools = find(a.themes, /tools/, "Engineering");
     // e1 changes their mind in their latest check-in: no updates please
-    store.addCheckIn({ employeeId: "e1", team: "Engineering", week: 2, question: "q", mood: "stuck", note: "Still no licence", shareName: false, notifyMe: false });
+    store.addCheckIn({ employeeId: "e1", team: "Engineering", week: 2, question: "q", ...NOT_YET, note: "Still no licence", shareName: false, notifyMe: false });
     store.addAction(tools.id);
     const action = store.hrActions()[0];
     expect(action.peopleToTell).toBe(2); // e2 and e3, not e1
@@ -255,7 +259,7 @@ describe("AI helpers on the island (offline versions)", () => {
 describe("Fixes from the code review", () => {
   it("HR never gets employee IDs or the 'tell me' choice", () => {
     expect(JSON.stringify(store.hrRequests())).not.toMatch(/employeeId/);
-    store.addCheckIn({ employeeId: "e2", team: "Engineering", week: 2, question: "q", mood: "stuck", note: "x", shareName: true, notifyMe: false });
+    store.addCheckIn({ employeeId: "e2", team: "Engineering", week: 2, question: "q", ...NOT_YET, note: "x", shareName: true, notifyMe: false });
     expect(JSON.stringify(store.hrCheckIns())).not.toMatch(/notifyMe|employeeId/);
   });
 
@@ -277,7 +281,7 @@ describe("Fixes from the code review", () => {
     store.addAction(tools.id);
     const before = store.hrActions()[0].peopleToTell;
     // e2 later says "no updates" on an unrelated check-in: this follow-up still tells them
-    store.addCheckIn({ employeeId: "e2", team: "Engineering", week: 2, question: "q", mood: "great", note: "", shareName: false, notifyMe: false });
+    store.addCheckIn({ employeeId: "e2", team: "Engineering", week: 2, question: "q", ...YES, note: "", shareName: false, notifyMe: false });
     expect(store.hrActions()[0].peopleToTell).toBe(before);
   });
 
@@ -306,10 +310,10 @@ describe("Weekly check-in", () => {
   it("checking in again the same week changes the answer instead of adding one", () => {
     const base = { employeeId: "e5", team: "Engineering", week: 2, question: "q", note: "", shareName: false, notifyMe: true };
     const before = store.checkIns().length;
-    expect(store.saveMyCheckIn({ ...base, mood: "stuck" }).updated).toBe(false);
-    expect(store.saveMyCheckIn({ ...base, mood: "great", note: "Sorted now" }).updated).toBe(true);
+    expect(store.saveMyCheckIn({ ...base, ...NOT_YET }).updated).toBe(false);
+    expect(store.saveMyCheckIn({ ...base, ...YES, note: "Sorted now" }).updated).toBe(true);
     expect(store.checkIns().length).toBe(before + 1);
-    expect(store.myCheckInThisWeek("e5")?.mood).toBe("great");
+    expect(store.myCheckInThisWeek("e5")?.answer).toBe("yes");
   });
 });
 
@@ -325,7 +329,7 @@ describe("Check-in questions HR sets", () => {
       { id: "a", text: "Second", weeks: [2, 3] }, // week 2 is already taken; duplicate id gets a new one
     ]);
     const [a, b] = store.questions();
-    expect(a).toEqual({ id: "a", text: "First question", weeks: [1, 2] });
+    expect(a).toEqual({ id: "a", text: "First question", weeks: [1, 2], answerSetId: "mood" }); // unknown choices: the first set
     expect(b.weeks).toEqual([3]);
     expect(b.id).not.toBe("a");
     expect(() => store.setQuestions([{ id: "x", text: "   ", weeks: [1] }])).toThrow();
@@ -341,7 +345,7 @@ describe("Check-in questions HR sets", () => {
     store.setQuestions([{ id: "belonging", text: "Do you feel part of the team?", weeks: [2] }]);
     const q = store.questionFor(2);
     const before = store.hrQuestionStats("All").find((s) => s.id === "belonging")!;
-    store.saveMyCheckIn({ employeeId: "e5", team: "Engineering", week: 2, question: q.text, questionId: q.id, mood: "stuck", note: "Don't know anyone yet", shareName: false, notifyMe: true });
+    store.saveMyCheckIn({ employeeId: "e5", team: "Engineering", week: 2, question: q.text, questionId: q.id, ...NOT_YET, note: "Don't know anyone yet", shareName: false, notifyMe: true });
     const all = store.hrQuestionStats("All").find((s) => s.id === "belonging")!;
     expect(all.answers).toBe(before.answers + 1);
     expect(all.thisWeek).toBe(before.thisWeek + 1);
@@ -349,5 +353,64 @@ describe("Check-in questions HR sets", () => {
     expect(all.hardestTeam?.team).toBe("Engineering");
     expect(JSON.stringify(store.hrQuestionStats("All"))).not.toMatch(/e5|Don't know anyone/);
     expect(store.hrQuestionStats("Finance").find((s) => s.id === "belonging")!.thisWeek).toBe(0);
+  });
+});
+
+describe("Answer choices HR sets", () => {
+  it("each default question has choices that fit it", () => {
+    expect(store.prompt(2).choices.map((c) => c.label)).toEqual(["Yes", "Somewhat", "Not yet"]);
+    expect(store.prompt(4).choices).toHaveLength(5); // priorities: 1 to 5
+  });
+
+  it("saves clean sets only: a name, 2 to 6 worded choices, each with a meaning", () => {
+    const sets = store.answerSets();
+    store.setAnswerSets([...sets, { id: "x", name: " Team  feel ", choices: [{ id: "a", label: "Close", signal: "good" }, { id: "a", label: "Distant", signal: "bogus" }] }]);
+    const x = store.answerSets().find((a) => a.id === "x")!;
+    expect(x.name).toBe("Team feel");
+    expect(x.choices[1].signal).toBe("okay"); // unknown meaning: Okay
+    expect(x.choices[1].id).not.toBe("a"); // duplicate choice id gets a new one
+    const one = [{ id: "c", label: "Only", signal: "good" }];
+    expect(() => store.setAnswerSets([...sets, { id: "y", name: "Too few", choices: one }])).toThrow();
+    expect(() => store.setAnswerSets([...sets, { id: "y", name: "", choices: x.choices }])).toThrow();
+    expect(() => store.setAnswerSets([])).toThrow();
+  });
+
+  it("a set a question uses can't be removed", () => {
+    expect(() => store.setAnswerSets(store.answerSets().filter((a) => a.id !== "yes-somewhat"))).toThrow(/still uses/);
+    store.setAnswerSets(store.answerSets().filter((a) => a.id !== "mood")); // no default question uses Mood
+    expect(store.answerSets().some((a) => a.id === "mood")).toBe(false);
+  });
+
+  it("what a choice means drives the themes, whatever it's called", async () => {
+    // HR renames "Not yet" to "Nope": a struggling answer still counts as one
+    store.setAnswerSets(store.answerSets().map((a) => (a.id === "yes-somewhat" ? { ...a, choices: a.choices.map((c) => (c.id === "not-yet" ? { ...c, label: "Nope" } : c)) } : a)));
+    store.saveMyCheckIn({ employeeId: "e5", team: "Engineering", week: 2, question: "q", questionId: "tools", answer: "not-yet", answerLabel: "Nope", signal: "struggling", note: "Still waiting on my software licences", shareName: false, notifyMe: true });
+    const tools = find((await analyse()).themes, /tools/, "Engineering");
+    expect(tools.affected).toBe(4);
+    expect(store.hrStats("Engineering").negative).toBe(4);
+  });
+
+  it("past answers keep the wording they had after HR edits the choices", () => {
+    store.setAnswerSets(store.answerSets().map((a) => (a.id === "yes-somewhat" ? { ...a, choices: a.choices.filter((c) => c.id !== "somewhat") } : a)));
+    const tools = store.hrQuestionStats("All").find((q) => q.id === "tools")!;
+    const earlier = tools.choiceCounts.find((c) => !c.current);
+    expect(earlier).toMatchObject({ label: "Somewhat", signal: "okay", count: 1 });
+    expect(tools.choiceCounts.find((c) => c.id === "not-yet")!.count).toBe(4);
+  });
+});
+
+describe("Saved data from before answer choices", () => {
+  it("turns old mood check-ins into answers and gives old questions their choices", () => {
+    const file = path.join(dir, "workpalz-data.json");
+    const old = JSON.parse(fs.readFileSync(file, "utf8"));
+    delete old.answerSets;
+    for (const q of old.questions) delete q.answerSetId;
+    old.checkIns = [{ id: "old", employeeId: "e5", team: "Engineering", week: 2, question: "q", mood: "overloaded", note: "", shareName: false, createdAt: new Date().toISOString() }];
+    fs.writeFileSync(file, JSON.stringify(old));
+    loadStore();
+    expect(store.checkIns()[0]).toMatchObject({ answer: "overloaded", answerLabel: "Overloaded", signal: "struggling" });
+    expect("mood" in store.checkIns()[0]).toBe(false);
+    expect(store.questions().find((q) => q.id === "belonging")!.answerSetId).toBe("yes-somewhat");
+    expect(store.answerSets().length).toBe(3);
   });
 });

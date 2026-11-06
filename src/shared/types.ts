@@ -2,17 +2,22 @@
 
 // ---------- Check-ins ----------
 
-export type Mood = "great" | "okay" | "stuck" | "frustrated" | "overloaded";
+// What an answer means, whatever HR calls the choice. This is what the themes, the Overview
+// and the "you said you're stuck" tip go by, so HR can word choices freely.
+export type AnswerSignal = "good" | "okay" | "struggling";
 
-export const MOODS: { id: Mood; label: string; color: string }[] = [
-  { id: "great", label: "Great", color: "#4C8DFF" },
+export const SIGNALS: { id: AnswerSignal; label: string; color: string }[] = [
+  { id: "good", label: "Doing well", color: "#4C8DFF" },
   { id: "okay", label: "Okay", color: "#8AB3FF" },
-  { id: "stuck", label: "Stuck", color: "#FFC98A" },
-  { id: "frustrated", label: "Frustrated", color: "#FFA94D" },
-  { id: "overloaded", label: "Overloaded", color: "#E8590C" },
+  { id: "struggling", label: "Needs help", color: "#FFA94D" },
 ];
+export const signalOf = (id: AnswerSignal) => SIGNALS.find((s) => s.id === id) ?? SIGNALS[1];
 
-export const NEGATIVE_MOODS: Mood[] = ["stuck", "frustrated", "overloaded"];
+// HR words the answer choices. A question uses one answer set; several questions can share one.
+export type AnswerChoice = { id: string; label: string; signal: AnswerSignal };
+export type AnswerSet = { id: string; name: string; choices: AnswerChoice[] };
+export const MIN_CHOICES = 2;
+export const MAX_CHOICES = 6; // what fits in one row on the island
 
 export type Employee = {
   id: string;
@@ -23,9 +28,11 @@ export type Employee = {
 
 // HR decides which question each onboarding week gets. A week belongs to one question at most.
 export const ONBOARDING_WEEKS = 12;
-export type CheckInQuestion = { id: string; text: string; weeks: number[] };
+export type CheckInQuestion = { id: string; text: string; weeks: number[]; answerSetId: string };
 // Asked in a week HR left without a question
-export const FALLBACK_QUESTION: CheckInQuestion = { id: "general", text: "How is your week going?", weeks: [] };
+export const FALLBACK_QUESTION: CheckInQuestion = { id: "general", text: "How is your week going?", weeks: [], answerSetId: "mood" };
+// What the island shows for this week's check-in
+export type CheckInPrompt = { text: string; choices: AnswerChoice[] };
 
 export type CheckIn = {
   id: string;
@@ -34,7 +41,10 @@ export type CheckIn = {
   week: number;
   question: string; // the wording they saw, kept even if HR edits the question later
   questionId?: string; // older saved check-ins don't have it: matched by wording
-  mood: Mood;
+  // The choice they picked. Wording and meaning are kept as they were, even if HR edits the choices later.
+  answer: string;
+  answerLabel: string;
+  signal: AnswerSignal;
   note: string;
   shareName: boolean;
   // "Tell me if HR acts on this". WorkPalz, not HR, delivers the update; HR never learns who got it.
@@ -43,9 +53,9 @@ export type CheckIn = {
   createdAt: string;
 };
 
-export type CheckInInput = { mood: Mood; note: string; shareName: boolean; notifyMe: boolean };
+export type CheckInInput = { answer: string; note: string; shareName: boolean; notifyMe: boolean };
 // The person's own check-in for this week (one per week; checking in again changes it)
-export type MyCheckIn = { mood: Mood; note: string; shareName: boolean; notifyMe: boolean; createdAt: string };
+export type MyCheckIn = { answer: string; note: string; shareName: boolean; notifyMe: boolean; createdAt: string };
 
 // ---------- Ask WorkPalz (jargon + quick search) ----------
 // Answers come from the "company guide": the company's knowledge, kept in three places.
@@ -240,8 +250,10 @@ export type HrQuestionStats = CheckInQuestion & {
   answers: number;
   people: number;
   thisWeek: number;
-  struggling: number; // stuck, frustrated or overloaded
-  moodCounts: Record<Mood, number>;
+  struggling: number; // picked a choice that means "Needs help"
+  signalCounts: Record<AnswerSignal, number>;
+  // One row per choice; earlier choices HR has since removed or reworded show with the wording people saw
+  choiceCounts: { id: string; label: string; signal: AnswerSignal; count: number; current: boolean }[];
   hardestTeam: { team: string; struggling: number; answers: number } | null; // when viewing all teams
 };
 
@@ -249,8 +261,8 @@ export type HrStats = {
   newHires: number;
   checkedIn: number;
   checkIns: number;
-  negative: number;
-  moodCounts: Record<Mood, number>;
+  negative: number; // answers that mean "Needs help"
+  signalCounts: Record<AnswerSignal, number>;
   openRequests: number;
   unanswered: number;
   questions: number;
@@ -319,7 +331,7 @@ export type WorkPalzApi = {
 
   // employee
   getMe: () => Promise<Employee>;
-  getQuestion: () => Promise<string>;
+  getQuestion: () => Promise<CheckInPrompt>;
   submitCheckIn: (input: CheckInInput) => Promise<CheckInReply>;
   getMyCheckIn: () => Promise<MyCheckIn | null>;
   ask: (question: string) => Promise<AskResult>;
@@ -344,6 +356,8 @@ export type WorkPalzApi = {
   hrCheckIns: () => Promise<HrCheckIn[]>;
   hrQuestions: (team: string) => Promise<HrQuestionStats[]>;
   saveQuestions: (questions: CheckInQuestion[]) => Promise<void>;
+  hrAnswerSets: () => Promise<AnswerSet[]>;
+  saveAnswerSets: (sets: AnswerSet[]) => Promise<void>;
   hrAsks: () => Promise<HrAsk[]>;
   hrRequests: () => Promise<HrRequest[]>;
   setRequestStatus: (id: string, status: RequestStatus) => Promise<void>;
