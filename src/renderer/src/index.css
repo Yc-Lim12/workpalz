@@ -54,6 +54,7 @@ html.hr {
   --hr-green-bg: #ddf3e7;
   --hr-green-fg: #185c3b;
   --hr-red-fg: #8a2e00;
+  --hr-red-bg: #ffe1d6;
   color-scheme: light;
 }
 html.hr[data-theme="dark"] {
@@ -87,6 +88,7 @@ html.hr[data-theme="dark"] {
   --hr-green-bg: #15362a;
   --hr-green-fg: #8fdcb4;
   --hr-red-fg: #ffa07c;
+  --hr-red-bg: #4a1f12;
   color-scheme: dark;
 }
 html.hr,

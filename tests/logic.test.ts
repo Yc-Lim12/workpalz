@@ -414,3 +414,67 @@ describe("Saved data from before answer choices", () => {
     expect(store.answerSets().length).toBe(3);
   });
 });
+
+describe('"Did this help?" after a follow-up', () => {
+  // The Engineering tools follow-up, marked done: who was told is who gets asked
+  const doneFollowUp = async () => {
+    store.setAnalysis(await analyse());
+    const t = store.internalAnalysis()!.themes.find((x) => /tools/.test(x.title) && x.team === "Engineering")!;
+    store.addAction(t.id);
+    const id = store.hrActions()[0].id;
+    store.setActionStatus(id, "done");
+    return { id, told: t.contributorIds };
+  };
+
+  it("asks only the people who were told, and only once the fix is done", async () => {
+    store.setAnalysis(await analyse());
+    const t = store.internalAnalysis()!.themes.find((x) => /tools/.test(x.title) && x.team === "Engineering")!;
+    store.addAction(t.id);
+    expect(store.myFixCheck(t.contributorIds[0])).toBeNull(); // not done yet
+    store.setActionStatus(store.hrActions()[0].id, "done");
+    expect(store.myFixCheck(t.contributorIds[0])?.attempt).toBe(1);
+    expect(store.myFixCheck("f1")).toBeNull(); // Finance wasn't told
+  });
+
+  it("half or more saying it didn't help puts it back on HR's list, with anonymous reasons", async () => {
+    const { id, told } = await doneFollowUp();
+    store.answerFix(told[0], { actionId: id, helped: true });
+    expect(store.hrActions()[0].status).toBe("done");
+    store.answerFix(told[1], { actionId: id, helped: false, reason: "still", note: "Licence still pending" });
+    const a = store.hrActions()[0];
+    expect(a.status).toBe("retry");
+    expect(a.results).toMatchObject({ helped: 1, notReally: 1, waiting: told.length - 2, reasons: [{ reason: "still", note: "Licence still pending" }] });
+    expect(store.myFixCheck(told[2])).toBeNull(); // nobody is asked about a fix that's back on the list
+    expect(() => store.answerFix(told[0], { actionId: id, helped: true })).toThrow(); // and nobody answers twice
+    expect(JSON.stringify(store.hrActions())).not.toMatch(/employeeId|answers|notifyIds|contributorIds/);
+  });
+
+  it("the second try asks again; if it still didn't help, WorkPalz stops and offers a person", async () => {
+    const { id, told } = await doneFollowUp();
+    store.answerFix(told[0], { actionId: id, helped: false, reason: "not-reached" });
+    store.setActionStatus(id, "done", "IT lead approves licences the same day"); // HR tries something different
+    expect(store.hrActions()[0]).toMatchObject({ attempt: 2, action: "IT lead approves licences the same day" });
+    expect(store.myNotices(told[0]).some((n) => n.title === "HR tried again" && n.body.includes("IT lead approves licences"))).toBe(true);
+    expect(store.myFixCheck(told[0])?.attempt).toBe(2);
+    store.answerFix(told[0], { actionId: id, helped: false, reason: "still" });
+    expect(store.hrActions()[0].status).toBe("stuck");
+    expect(store.myNotices(told[1]).some((n) => /talk to someone/.test(n.title))).toBe(true);
+    expect(store.myFixCheck(told[1])).toBeNull(); // no more asking
+  });
+
+  it("Impact counts the fixes new hires said helped", async () => {
+    const { id, told } = await doneFollowUp();
+    expect(store.hrImpact("All").fixesWorked).toEqual({ worked: 0, checked: 0 });
+    store.answerFix(told[0], { actionId: id, helped: true });
+    expect(store.hrImpact("All").fixesWorked).toEqual({ worked: 1, checked: 1 });
+    store.answerFix(told[1], { actionId: id, helped: false });
+    expect(store.hrImpact("All").fixesWorked).toEqual({ worked: 0, checked: 1 });
+  });
+
+  it('"Delete my data" removes their answers too', async () => {
+    const { id, told } = await doneFollowUp();
+    store.answerFix(told[0], { actionId: id, helped: false, reason: "other", note: "mine" });
+    store.deleteMyData(told[0]);
+    expect(store.hrActions()[0].results?.notReally).toBe(0);
+  });
+});

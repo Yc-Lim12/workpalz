@@ -405,6 +405,43 @@ await axe(island, "island notice");
 await island.getByRole("button", { name: /Got it|Next/ }).click();
 await settle();
 
+// "Did this help?" at the next check-in: she says not really, and gets offered a person straight away
+await hook("sendIsland", { type: "checkin-prompt" });
+await settle();
+await island.getByRole("button", { name: /Weekly check-in is ready/ }).click();
+await settle();
+check("Next check-in asks if HR's fix helped", (await island.locator(".island-shell").innerText()).includes("Did HR's fix help?"));
+await island.getByText(/Not really$/).click(); // the 👎 is hidden from screen readers
+await island.getByText("Still happening", { exact: true }).click();
+await island.getByLabel("Tell HR more (optional)").fill("Licence still says pending");
+await settle(300);
+await axe(island, "island did this help");
+await shot(island, "checkin-did-it-help");
+await island.getByRole("button", { name: "Update", exact: true }).click();
+await island.getByText("the fix didn't help").first().waitFor();
+await settle(300);
+check("Saying it didn't help offers the HR Partner", (await island.locator(".island-shell").innerText()).includes("Ping Siti, HR Partner"));
+await axe(island, "island fix didn't help");
+await island.getByRole("button", { name: "Ping Siti, HR Partner" }).click();
+await settle();
+check("One tap opens a ping to the HR Partner, message ready", (await island.locator(".island-shell").innerText()).includes("Ping Siti") && (await island.locator("#ping-msg").inputValue()).includes("didn't help"));
+await island.keyboard.press("Escape");
+await settle(1500);
+
+await hr.waitForTimeout(400);
+const fu = await hr.locator("main").innerText();
+check("Follow-up comes back as 'Needs another try'", fu.includes("Needs another try") && fu.includes("Not really 1"));
+check("HR sees the anonymous reason, not who", fu.includes("Still happening") && fu.includes("Licence still says pending") && !fu.includes("Mei Ling"));
+await axe(hr, "HR follow-up needs another try");
+await shot(hr, "hr-followup-retry", null);
+await hr.getByLabel("What will you try this time?").fill("IT lead approves licences the same day");
+await hr.getByRole("checkbox").first().check(); // HR tries something different
+await island.getByText("HR tried again").waitFor({ timeout: 4000 });
+await settle(500);
+check("Trying again tells the new hires what's different", (await island.locator(".island-shell").innerText()).includes("IT lead approves licences the same day"));
+await island.getByRole("button", { name: /Got it|Next/ }).click();
+await settle();
+
 // Requests → status update notifies the employee
 await hr.getByRole("button", { name: /^Requests/ }).click();
 await hr.waitForTimeout(300);
@@ -530,6 +567,8 @@ const mk = await hr.locator("main").innerText();
 check("Team filter shows only Marketing themes", !mk.includes("4 of 5 Engineering") && mk.includes("Marketing"));
 check("Impact section is shown", mk.includes("Impact") && mk.includes("Company guide gaps closed"));
 await hr.getByLabel("Team").selectOption("All");
+await hr.waitForTimeout(400);
+check("Impact shows whether fixes worked", /Fixes that worked\s*[\s\S]{0,80}0 of 1/.test(await hr.locator("main").innerText()));
 
 // Ask AI: the assistant on every page (offline answers here)
 await hr.getByRole("button", { name: "Ask AI" }).click();

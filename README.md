@@ -18,6 +18,7 @@ New employees often struggle quietly in their first months: missing tools, uncle
 - **Smart Quick request** (hybrid AI): describe the problem in your own words, or tap a **quick button** (Laptop or hardware, Pay or claims, …) and just add a line. One screen shows a matching answer from the company guide ("That fixed it" = no ticket needed) and where the request goes ("Goes to: IT · System access", picked for you, with Change); if you're still stuck, press "Send to IT". Vague requests ("I want to submit an IT ticket") get one short question first. Track status afterwards.
 - **Ping a colleague**: search by name or topic ("VPN", "staging server"), or describe the problem and press **✦ Who can help with this?** (AI suggests the right person). See who's available and ask them for help. Only the colleague sees it, never HR.
 - **Weekly check-in**: one tap plus an optional note, once a week (checking in again that week changes the answer, so HR counts it once). The question changes with the onboarding stage (HR sets which question each week gets; "Do you feel part of the team?" is asked from week 3). Anonymous to HR by default, with a choice to hear back if HR acts on it (see below). If you say you're stuck, WorkPalz gives something back straight away (AI): a matching guide answer and the status of your related open request.
+- **Did HR's fix help?**: after HR acts on something you raised, your next check-in asks 👍 Helped / 👎 Not really (optional). "Not really" asks what's still wrong and offers help straight away: a guide answer, your open request, or one tap to ping the HR Partner.
 - **Focus timer**: 25-minute focus session shown in the pill.
 - **Updates**: the island tells you when HR fixes something you raised, when a question you asked gets an answer in the company guide, or when a colleague replies.
 - **Welcome tour**: on the first day the island opens itself once and shows how to open it, how it stays out of the way and how anonymity works. Replay it from Settings.
@@ -33,6 +34,7 @@ New employees often struggle quietly in their first months: missing tools, uncle
 **For HR (the dashboard)**
 - **AI themes** across check-ins, unanswered questions and open requests, with "X of Y new hires", week-over-week trend, quotes and a suggested action.
 - **One-click follow-ups**; marking one done tells the people who raised it, without revealing who they are.
+- **Follow-ups check they worked**: each one shows *Helped / Not really / No answer yet* and the anonymous reasons. If half or more say it didn't help, it comes back as **Needs another try**; HR writes what they'll try this time, and the same new hires are told and asked again. After two tries that didn't work, WorkPalz stops asking and offers the new hires the HR Partner (**Still not fixed after 2 tries**). Impact shows **Fixes that worked**.
 - **Impact**: check-in response rate, requests resolved and how fast, oldest open request, follow-ups done, problems **fixed without a ticket**, company guide gaps closed.
 - **Ask AI**: one assistant on every page that knows the whole dashboard. Ask "Which team needs help most?" or "Summarise this week for managers".
 - **Fill gaps in the company guide with AI**: for questions the guide couldn't answer, the AI drafts an entry and suggests where it belongs (formal policy goes in the Employee Handbook, server access in the IT Help Centre, jargon in the Team Glossary); HR can change it. Anything company-specific is left as `[HR: …]`, and publishing stays locked until HR fills it in. Publishing updates Ask WorkPalz straight away and tells everyone who asked.
@@ -45,7 +47,7 @@ New employees often struggle quietly in their first months: missing tools, uncle
 
 - Only voluntary input. No app, screen, keystroke or camera tracking. No mood guessing.
 - Check-ins and questions are anonymous to HR unless the employee ticks "share my name". Requests include the name because IT needs it. Pings go only to the colleague.
-- **Anonymous, but you can still hear back**: WorkPalz, not HR, keeps a private note of who raised what. When HR marks a follow-up done, WorkPalz tells the people who ticked "Tell me if HR acts on this" (on by default, changeable at every check-in). HR only sees "will tell 3 new hires, you won't see who". The check-in, the update itself, the privacy screen and the welcome tour all explain this.
+- **Anonymous, but you can still hear back**: WorkPalz, not HR, keeps a private note of who raised what. When HR marks a follow-up done, WorkPalz tells the people who ticked "Tell me if HR acts on this" (on by default, changeable at every check-in). HR only sees "will tell 3 new hires, you won't see who". "Did this help?" works the same way: only the people who were told are asked, and HR sees counts and anonymous reasons, never who answered. The check-in, the update itself, the privacy screen and the welcome tour all explain this.
 - Names and IDs are never sent to the AI. Theme analysis sees "P1, P2…" only so it can count people; the HR assistant gets no names at all.
 - The HR window only receives sanitised data (enforced in `src/main/store.ts`). The manager limits are enforced in `src/main/assistant.ts`, not just hidden on screen.
 - AI answers in Ask WorkPalz are grounded in the company guide and say which part they come from; if it isn't there, it says so. The AI never rewords formal Employee Handbook policy, and its drafts never invent company facts.
@@ -78,8 +80,8 @@ Without a key, WorkPalz uses its offline analyser, company guide search and simp
 | Command | What it does |
 |---|---|
 | `npm run dev` | Run the app |
-| `npm test` | Run the logic tests (38) |
-| `npm run build && npm run test:e2e` | Drive the real app through every feature, screenshot it and run a WCAG scan on every screen (116 checks) |
+| `npm test` | Run the logic tests (43) |
+| `npm run build && npm run test:e2e` | Drive the real app through every feature, screenshot it and run a WCAG scan on every screen (126 checks) |
 | `npm run typecheck` | TypeScript check |
 | `npm run dist:win` | Build a Windows installer (run on Windows) |
 | `npm run dist:mac` | Build a macOS .dmg |
@@ -107,7 +109,7 @@ Optional shortcuts for Ask WorkPalz, Quick request, Ping a colleague and the foc
 3. **Ping a colleague** → search "VPN" → ping Ravi from IT → his reply pops up a few seconds later.
 4. `Ctrl+Alt+C` → island pulses → **Frustrated** + "Still waiting on my software licence" → Send.
 5. Dashboard → **Analyse this week** → *Waiting on tools, licences or access: 4 of 5 Engineering new hires, up from 1 last week*, with a check-in, a question and a request as evidence.
-6. **Create follow-up** → **Follow-ups** tab → tick done → the island expands: *"Update on something you raised…"*.
+6. **Create follow-up** → **Follow-ups** tab → tick done → the island expands: *"Update on something you raised…"*. Then `Ctrl+Alt+C` → the check-in asks *"Did HR's fix help?"* → **Not really** · *Still happening* → the follow-up comes back as **Needs another try**, and Impact shows **Fixes that worked: 0 of 1**.
 7. **Questions** → staging server question → **Draft answer with AI** (it suggests the IT Help Centre) → fill in the `[HR: …]` part → **Publish** → the island: *"Your question has an answer"*.
 8. **Ask AI** → "Which team needs help most this week?". Then **View as → Engineering manager** to show what a manager sees.
 

@@ -300,10 +300,18 @@ function registerIpc() {
       shareName: !!input.shareName,
       notifyMe: input.notifyMe !== false,
     });
+    // "Did this help?" about a fix HR made, answered with the check-in (optional)
+    const fixCheck = input.fix ? store.myFixCheck(m.id) : null;
+    const fix = fixCheck && input.fix?.actionId === fixCheck.actionId ? store.answerFix(m.id, input.fix) : null;
     broadcastChange();
-    // Give something back straight away: a guide tip and the status of a related request
-    return checkInReply(m.id, note, choice.signal === "struggling");
+    // Give something back straight away: a guide tip and the status of a related request.
+    // If the fix didn't help, look for help with what's still wrong.
+    const struggling = choice.signal === "struggling";
+    const about = struggling && note ? note : fix?.didntHelp ? input.fix?.note?.trim() || fixCheck!.themeTitle : note;
+    const reply = await checkInReply(m.id, about, struggling || !!fix?.didntHelp);
+    return { ...reply, fixDidntHelp: !!fix?.didntHelp };
   });
+  ipcMain.handle("fix:mine", () => store.myFixCheck(ME_ID));
 
   ipcMain.handle("request:suggest", (_e, text: string) => suggestRequest(String(text ?? ""), { selfHelpOnly: true }));
   ipcMain.handle("request:solved-by-guide", (_e, tipId: string) => {
@@ -441,9 +449,9 @@ function registerIpc() {
     store.addAction(themeId);
     broadcastChange();
   });
-  ipcMain.handle("actions:status", (_e, id: string, status: Action["status"]) => {
+  ipcMain.handle("actions:status", (_e, id: string, status: Action["status"], action?: string) => {
     if (status !== "open" && status !== "done") throw new Error("Unknown status");
-    store.setActionStatus(id, status);
+    store.setActionStatus(id, status, typeof action === "string" ? action : undefined);
     broadcastChange();
   });
 

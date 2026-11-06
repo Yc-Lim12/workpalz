@@ -55,7 +55,14 @@ function snapshot(view: AssistantView) {
         status: r.status,
         daysOpen: daysAgo(r.createdAt),
       })),
-    followUps: store.hrActions().filter(mine).map((a) => ({ theme: a.themeTitle, team: a.team, action: a.action, owner: a.owner, status: a.status })),
+    followUps: store.hrActions().filter(mine).map((a) => ({
+      theme: a.themeTitle,
+      team: a.team,
+      action: a.action,
+      owner: a.owner,
+      status: a.status === "retry" ? "needs another try (the fix didn't help)" : a.status === "stuck" ? "still not fixed after 2 tries" : a.status,
+      didItHelp: a.results ? { helped: a.results.helped, notReally: a.results.notReally, noAnswerYet: a.results.waiting } : undefined,
+    })),
     companyGuide: store.handbook().map((h) => `${h.title} (${guideLabel(h.source)})`),
   };
 }
@@ -124,7 +131,7 @@ function answerOffline(question: string, view: AssistantView, d: Snapshot): Assi
   const openRequests = d.requests.filter((r) => inTeam(r) && r.status !== "resolved").sort((a, b) => b.daysOpen - a.daysOpen);
   const gaps = d.questions.filter((a) => inTeam(a) && !a.answeredByCompanyGuide);
   const themes = d.themes.filter(inTeam);
-  const followUps = d.followUps.filter((f) => inTeam(f) && f.status === "open");
+  const followUps = d.followUps.filter((f) => inTeam(f) && f.status !== "done");
 
   if (/request|ticket|licen|access|laptop|it\b|overdue|waiting|longest/.test(q)) {
     lines.push(`${openRequests.length} open request${openRequests.length === 1 ? "" : "s"} ${where}.`);
@@ -134,9 +141,11 @@ function answerOffline(question: string, view: AssistantView, d: Snapshot): Assi
     lines.push(`${gaps.length} question${gaps.length === 1 ? "" : "s"} ${where} had no answer in the company guide.`);
     for (const a of gaps.slice(0, 4)) lines.push(`- "${a.question}" (${a.team})`);
     if (gaps.length) lines.push("Adding answers to the company guide would close the gap. See Questions.");
-  } else if (/follow|action|done|todo|to-do/.test(q)) {
+  } else if (/follow|action|done|todo|to-do|\bfix(es|ed)?\b|did .*help/.test(q)) {
     lines.push(`${followUps.length} open follow-up${followUps.length === 1 ? "" : "s"} ${where}.`);
-    for (const f of followUps.slice(0, 4)) lines.push(`- ${f.action} (owner: ${f.owner})`);
+    for (const f of followUps.slice(0, 4)) lines.push(`- ${f.action} (owner: ${f.owner}${f.status === "open" ? "" : `, ${f.status}`})`);
+    const checked = d.followUps.filter((f) => inTeam(f) && f.didItHelp && f.didItHelp.helped + f.didItHelp.notReally > 0);
+    for (const f of checked.slice(0, 4)) lines.push(`- "${f.theme}": ${f.didItHelp!.helped} said it helped, ${f.didItHelp!.notReally} said not really`);
   } else if (/check.?in|mood|feel|saying|stuck|frustrat|overload/.test(q)) {
     const notes = d.checkIns.filter((c) => inTeam(c) && c.daysAgo < 7 && c.needsHelp && c.note);
     lines.push(`This week ${where}: ${s.negative} of ${s.checkIns} check-ins said they need help.`);

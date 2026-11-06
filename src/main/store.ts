@@ -9,7 +9,9 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   FALLBACK_QUESTION,
+  FIX_REASONS,
   guideLabel,
+  MAX_FIX_TRIES,
   MAX_CHOICES,
   MIN_CHOICES,
   ONBOARDING_WEEKS,
@@ -26,6 +28,10 @@ import {
   type CheckInPrompt,
   type CheckInQuestion,
   type Employee,
+  type FixAnswer,
+  type FixCheck,
+  type FixReason,
+  type FixResults,
   type HrAsk,
   type HrCheckIn,
   type HrImpact,
@@ -47,7 +53,9 @@ export type InternalTheme = Theme & { contributorIds: string[] };
 export type InternalAnalysis = Omit<Analysis, "themes"> & { themes: InternalTheme[] };
 // notifyIds: who asked to hear back, fixed when the follow-up is created (from their check-ins then),
 // so a later check-in can't silently change who gets told about this one
-type InternalAction = Action & { contributorIds: string[]; notifyIds?: string[] };
+// answers: "Did this help?" from the people told, per try. Who answered never reaches HR.
+type FixRecord = { employeeId: string; attempt: number; helped: boolean; reason?: FixReason; note?: string; at: string };
+type InternalAction = Action & { contributorIds: string[]; notifyIds?: string[]; answers?: FixRecord[] };
 
 type Data = {
   version: 2;
@@ -124,7 +132,11 @@ export function loadStore() {
     // Questions saved before answer choices existed: the built-in choice for that question, else Mood
     for (const q of data.questions) q.answerSetId ??= DEFAULT_QUESTIONS.find((d) => d.id === q.id)?.answerSetId ?? "mood";
     data.analysis ??= null;
-    for (const a of data.actions) a.contributorIds ??= [];
+    for (const a of data.actions) {
+      a.contributorIds ??= [];
+      a.answers ??= [];
+      a.attempt ??= 1;
+    }
     for (const t of data.analysis?.themes ?? []) t.contributorIds ??= [];
     for (const c of data.checkIns) {
       c.questionId ??= data.questions.find((q) => q.text === c.question)?.id;
@@ -219,6 +231,20 @@ function cleanQuestions(input: unknown): CheckInQuestion[] {
   }
   return out;
 }
+
+// "Did this help?" for one try: counts and anonymous reasons
+function fixResults(a: InternalAction, attempt = a.attempt ?? 1): FixResults {
+  const answers = (a.answers ?? []).filter((x) => x.attempt === attempt);
+  const asked = a.status !== "open" && attempt <= MAX_FIX_TRIES ? toTell(a).length : answers.length;
+  return {
+    helped: answers.filter((x) => x.helped).length,
+    notReally: answers.filter((x) => !x.helped).length,
+    waiting: Math.max(0, asked - answers.length),
+    reasons: answers.filter((x) => !x.helped && x.reason).map((x) => ({ reason: x.reason!, note: x.note ?? "" })),
+  };
+}
+// Half or more of the answers say it didn't help
+const didntWork = (r: FixResults) => r.notReally > 0 && r.notReally >= r.helped;
 
 const strip = <T extends { contributorIds: string[] }>({ contributorIds: _c, ...rest }: T) => rest;
 
@@ -384,6 +410,7 @@ export const store = {
     for (const a of data.actions) {
       a.contributorIds = a.contributorIds.filter((id) => id !== employeeId);
       if (a.notifyIds) a.notifyIds = a.notifyIds.filter((id) => id !== employeeId);
+      if (a.answers) a.answers = a.answers.filter((x) => x.employeeId !== employeeId);
     }
     // AI themes quote check-ins, questions and requests. If any came from this person, the themes
     // have to go (HR presses Analyse again) so none of their words stay visible.
@@ -499,6 +526,16 @@ export const store = {
       questionsNowAnswered: data.asks.filter((a) => inTeam(a) && a.entryId?.startsWith("hr-")).length,
       solvedByGuide: data.solvedByGuide.filter(inTeam).length,
       checkInRate: { thisWeek: rate(inLastWeek), lastWeek: rate(inWeekBefore) },
+      // A fix worked when most of the latest answers about it said it helped
+      fixesWorked: actions.reduce(
+        (n, a) => {
+          const answered = (a.answers ?? []).map((x) => x.attempt);
+          if (!answered.length) return n;
+          const r = fixResults(a, Math.max(...answered));
+          return { worked: n.worked + (didntWork(r) ? 0 : 1), checked: n.checked + 1 };
+        },
+        { worked: 0, checked: 0 }
+      ),
     };
   },
 
@@ -529,9 +566,53 @@ export const store = {
 
   hrActions: (): Action[] =>
     data.actions.map((a) => {
-      const { notifyIds: _n, ...rest } = a; // who exactly is never sent to HR, only how many
-      return { ...strip(rest), peopleToTell: toTell(a).length };
+      const { notifyIds: _n, answers: _a, ...rest } = a; // who exactly is never sent to HR, only how many
+      return { ...strip(rest), peopleToTell: toTell(a).length, results: a.status === "open" && !a.answers?.length ? undefined : fixResults(a) };
     }),
+
+  // ----- "Did this help?" -----
+  // The newest fix this person was told about and hasn't answered for yet (asked at their next check-in)
+  myFixCheck(employeeId: string): FixCheck | null {
+    const a = data.actions
+      .filter(
+        (x) =>
+          x.status === "done" &&
+          (x.attempt ?? 1) <= MAX_FIX_TRIES &&
+          toTell(x).includes(employeeId) &&
+          !(x.answers ?? []).some((r) => r.employeeId === employeeId && r.attempt === (x.attempt ?? 1))
+      )
+      .sort((x, y) => (y.doneAt ?? "").localeCompare(x.doneAt ?? ""))[0];
+    return a ? { actionId: a.id, themeTitle: a.themeTitle, action: a.action, attempt: a.attempt ?? 1 } : null;
+  },
+
+  // Returns whether they said it didn't help. Half or more saying so puts the follow-up back on HR's list;
+  // on the last try, WorkPalz stops asking and offers the new hires a person to talk to instead.
+  answerFix(employeeId: string, input: FixAnswer): { didntHelp: boolean } {
+    const check = store.myFixCheck(employeeId);
+    const a = data.actions.find((x) => x.id === input?.actionId);
+    if (!a || !check || check.actionId !== a.id) throw new Error("Nothing to answer");
+    const helped = input.helped === true;
+    const reason = !helped && FIX_REASONS.some((r) => r.id === input.reason) ? input.reason : undefined;
+    const note = helped ? undefined : String(input.note ?? "").trim().slice(0, 200) || undefined;
+    (a.answers ??= []).push({ employeeId, attempt: check.attempt, helped, reason, note, at: now() });
+    if (didntWork(fixResults(a))) {
+      a.doneAt = undefined;
+      if (check.attempt < MAX_FIX_TRIES) {
+        a.status = "retry";
+      } else {
+        a.status = "stuck";
+        for (const id of toTell(a)) {
+          store.notify(
+            id,
+            "Still not fixed: want to talk to someone?",
+            `HR tried twice to fix: ${a.themeTitle.toLowerCase()}. Siti Aminah, the HR Partner, can help. Ping her from Ping a colleague. Sharing your name is up to you.`
+          );
+        }
+      }
+    }
+    save();
+    return { didntHelp: !helped };
+  },
 
   addAction(themeId: string) {
     const t = data.analysis?.themes.find((x) => x.id === themeId);
@@ -548,19 +629,32 @@ export const store = {
       createdAt: now(),
       contributorIds: [...t.contributorIds],
       notifyIds: t.contributorIds.filter(wantsUpdates),
+      attempt: 1,
+      answers: [],
     });
     save();
   },
 
   // Closing the loop: everyone who raised it hears that something was done
-  setActionStatus(id: string, status: Action["status"]): number {
+  // HR sets "open" or "done". Done again after it didn't help is the next try: the same people are told and asked again.
+  setActionStatus(id: string, status: "open" | "done", action?: string): number {
     const a = data.actions.find((x) => x.id === id);
     if (!a || a.status === status) return 0;
+    const again = a.status === "retry" || a.status === "stuck";
+    if (status === "done" && again) {
+      a.attempt = (a.attempt ?? 1) + 1;
+      const text = String(action ?? "").trim().replace(/\s+/g, " ").slice(0, 300);
+      if (text) a.action = text; // what's different this time: that's what the new hires are told
+    }
     a.status = status;
     a.doneAt = status === "done" ? now() : undefined;
     if (status === "done") {
       for (const employeeId of toTell(a)) {
-        store.notify(employeeId, "Update on something you raised", `You and others raised: ${a.themeTitle.toLowerCase()}.\nWhat was done: ${a.action}`);
+        if (again) {
+          store.notify(employeeId, "HR tried again", `You said the fix for ${a.themeTitle.toLowerCase()} didn't help.\nWhat was done now: ${a.action}`);
+        } else {
+          store.notify(employeeId, "Update on something you raised", `You and others raised: ${a.themeTitle.toLowerCase()}.\nWhat was done: ${a.action}`);
+        }
       }
     }
     save();

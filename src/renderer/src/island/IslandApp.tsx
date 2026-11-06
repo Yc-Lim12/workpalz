@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import Island, { type PillInfo } from "./Island";
 import { AMBER, BLUE, type IslandView } from "./theme";
-import { AskView, CheckInThanksView, CheckInView, clearAskHistory, clearDrafts, MenuView, NoticeView, PingView, PrivacyView, RequestView, SettingsView, StepBackView, TourView, displayShortcut, isMac, loadShortcuts } from "./views";
+import { AskView, CheckInThanksView, CheckInView, clearAskHistory, clearDrafts, presetPing, MenuView, NoticeView, PingView, PrivacyView, RequestView, SettingsView, StepBackView, TourView, displayShortcut, isMac, loadShortcuts } from "./views";
 import { REQUEST_CATEGORIES } from "../../../shared/types";
-import type { CheckInPrompt, MyCheckIn, CheckInReply, Colleague, Employee, IslandLayout, Notice, Ping, SupportRequest } from "../../../shared/types";
+import type { CheckInPrompt, FixCheck, MyCheckIn, CheckInReply, Colleague, Employee, IslandLayout, Notice, Ping, SupportRequest } from "../../../shared/types";
 
 const api = window.workpalz;
 const FOCUS_MS = 25 * 60 * 1000;
@@ -50,6 +50,7 @@ export default function IslandApp() {
   const [mini, setMini] = useState(false);
   const [checkInReply, setCheckInReply] = useState<CheckInReply | null>(null);
   const [myCheckIn, setMyCheckIn] = useState<MyCheckIn | null>(null);
+  const [fixCheck, setFixCheck] = useState<FixCheck | null>(null); // "Did this help?" waiting for the next check-in
   const [checkInUpdated, setCheckInUpdated] = useState(false);
   // Quiet (do not disturb): nothing pops up; anything waiting shows as a number by the clock
   const [quietUntil, setQuietUntil] = useState<number | null>(readQuiet);
@@ -202,7 +203,8 @@ export default function IslandApp() {
   }, [view, hidden, mini, quiet]);
 
   const refresh = useCallback(async () => {
-    const [r, n, pg, ci] = await Promise.all([api.listMyRequests(), api.listMyNotices(), api.listMyPings(), api.getMyCheckIn()]);
+    const [r, n, pg, ci, fx] = await Promise.all([api.listMyRequests(), api.listMyNotices(), api.listMyPings(), api.getMyCheckIn(), api.getMyFixCheck()]);
+    setFixCheck((prev) => (prev?.actionId === fx?.actionId && prev?.attempt === fx?.attempt ? prev : fx));
     setMyCheckIn(ci);
     setRequests(r);
     setNotices(n);
@@ -351,6 +353,9 @@ export default function IslandApp() {
   }, [quietUntil]);
 
   // The tray / menu bar icon shows how many things are waiting, and whether Quiet is on
+  // Who to offer when a fix didn't help
+  const hrPartner = colleagues.find((c) => /HR Partner/i.test(c.role)) ?? null;
+
   const attention = unread.length + (pending ? 1 : 0);
   attentionRef.current = attention;
   focusEndRef.current = focusEnd;
@@ -509,6 +514,7 @@ export default function IslandApp() {
             {view === "checkin" && (
               <CheckInView
                 prompt={question}
+                fixCheck={fixCheck}
                 existing={myCheckIn}
                 onClose={collapse}
                 onBack={() => open("menu")}
@@ -517,7 +523,7 @@ export default function IslandApp() {
                   const reply = await api.submitCheckIn(input);
                   setPending(false);
                   setCheckInUpdated(updated);
-                  if (reply.tip || reply.openRequest) {
+                  if (reply.tip || reply.openRequest || reply.fixDidntHelp) {
                     setCheckInReply(reply); // something useful to give back
                     open("thanks", false);
                   } else {
@@ -589,7 +595,18 @@ export default function IslandApp() {
               <SettingsView onBack={() => open("menu")} onReplayTour={() => open("tour")} />
             )}
             {view === "thanks" && checkInReply && (
-              <CheckInThanksView reply={checkInReply} updated={checkInUpdated} onOpenLink={api.openLink} onDone={collapse} />
+              <CheckInThanksView
+                reply={checkInReply}
+                updated={checkInUpdated}
+                talkTo={hrPartner}
+                onOpenLink={api.openLink}
+                onTalk={() => {
+                  if (!hrPartner) return;
+                  presetPing(hrPartner.id, "HR's fix for something I raised didn't help. Could we talk?");
+                  open("ping");
+                }}
+                onDone={collapse}
+              />
             )}
             {view === "away" && (
               <StepBackView

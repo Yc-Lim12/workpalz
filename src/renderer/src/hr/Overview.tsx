@@ -164,7 +164,15 @@ function ThemeCard({ t, manager, action, onCreate }: { t: Theme; manager: boolea
     t.sources.request && `${t.sources.request} open request${t.sources.request > 1 ? "s" : ""}`,
   ].filter(Boolean);
   const share = Math.round((t.affected / Math.max(t.teamSize, 1)) * 100);
-  const actionLabel = action ? (action.status === "done" ? "Follow-up done" : "Follow-up created") : "Create follow-up";
+  const actionLabel = !action
+    ? "Create follow-up"
+    : action.status === "done"
+      ? "Follow-up done"
+      : action.status === "retry"
+        ? "Needs another try"
+        : action.status === "stuck"
+          ? "Still not fixed"
+          : "Follow-up created";
 
   return (
     <Card as="article" className="relative flex flex-col gap-3 overflow-hidden !pl-5">
@@ -308,6 +316,11 @@ function Impact({ impact: m, manager }: { impact: HrImpact; manager: boolean }) 
       label: "Follow-ups done",
       value: `${m.followUpsDone} of ${m.followUpsDone + m.followUpsOpen}`,
       sub: `${m.peopleTold} new hire${m.peopleTold === 1 ? "" : "s"} told what changed`,
+    },
+    {
+      label: "Fixes that worked",
+      value: m.fixesWorked.checked ? `${m.fixesWorked.worked} of ${m.fixesWorked.checked}` : "None yet",
+      sub: m.fixesWorked.checked ? "New hires said the follow-up helped" : "Asked at the check-in after a follow-up",
     },
     {
       label: "Fixed without a ticket",

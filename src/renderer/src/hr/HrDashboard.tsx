@@ -101,7 +101,7 @@ export default function HrDashboard() {
   const latestFeedback = [...checkIns.filter(inTeam), ...asks.filter(inTeam), ...requests.filter(inTeam)].map((x) => x.createdAt).sort().pop();
   const stale = !!analysis && !!latestFeedback && latestFeedback > analysis.generatedAt;
   const openReq = requests.filter((r) => inTeam(r) && r.status !== "resolved").length;
-  const openActions = actions.filter((a) => inTeam(a) && a.status === "open").length;
+  const openActions = actions.filter((a) => inTeam(a) && a.status !== "done").length;
 
   const runAnalysis = async () => {
     setAnalysing(true);
@@ -123,10 +123,16 @@ export default function HrDashboard() {
     say(`Follow-up created for ${t.title}`);
   };
 
-  const setActionStatus = async (id: string, s: Action["status"]) => {
-    await api.setActionStatus(id, s);
-    const n = actions.find((a) => a.id === id)?.peopleToTell ?? 0;
-    say(s === "done" ? `Follow-up marked done. WorkPalz told ${n} new hire${n === 1 ? "" : "s"}; you won't see who.` : "Follow-up reopened.");
+  const setActionStatus = async (id: string, s: "open" | "done", action?: string) => {
+    const before = actions.find((a) => a.id === id);
+    await api.setActionStatus(id, s, action);
+    const n = before?.peopleToTell ?? 0;
+    const again = before?.status === "retry" || before?.status === "stuck";
+    say(
+      s === "done"
+        ? `${again ? "Marked done again" : "Follow-up marked done"}. WorkPalz told ${n} new hire${n === 1 ? "" : "s"} and will ask if it helped; you won't see who.`
+        : "Follow-up reopened."
+    );
   };
 
   const setRequestStatus = async (id: string, s: RequestStatus) => {
@@ -295,7 +301,7 @@ export default function HrDashboard() {
             onPublish={managerTeam ? undefined : publishHandbook}
           />
         )}
-        {tab === "followups" && <FollowUpsTab actions={actions.filter(inTeam)} onStatus={setActionStatus} />}
+        {tab === "followups" && <FollowUpsTab actions={actions.filter(inTeam)} manager={!!managerTeam} onStatus={setActionStatus} />}
         {tab === "checkins" && <CheckInsTab checkIns={checkIns.filter(inTeam)} questions={questions} answerSets={answerSets} onSaveQuestions={saveQuestions} onSaveAnswerSets={saveAnswerSets} />}
       </main>
 

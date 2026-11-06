@@ -53,7 +53,7 @@ export type CheckIn = {
   createdAt: string;
 };
 
-export type CheckInInput = { answer: string; note: string; shareName: boolean; notifyMe: boolean };
+export type CheckInInput = { answer: string; note: string; shareName: boolean; notifyMe: boolean; fix?: FixAnswer };
 // The person's own check-in for this week (one per week; checking in again changes it)
 export type MyCheckIn = { answer: string; note: string; shareName: boolean; notifyMe: boolean; createdAt: string };
 
@@ -149,7 +149,24 @@ export type ColleagueSuggestion = { colleagueId: string; reason: string; source:
 export type CheckInReply = {
   tip: GuideTip | null;
   openRequest: { label: string; dept: "IT" | "HR"; status: RequestStatus; days: number } | null;
+  fixDidntHelp?: boolean; // they said HR's fix didn't help: the thanks screen offers a person to talk to
 };
+
+// ---------- "Did this help?" after HR acts ----------
+// Asked at the next weekly check-in, only of the new hires who were told about the fix.
+
+export type FixReason = "still" | "not-reached" | "other";
+export const FIX_REASONS: { id: FixReason; label: string }[] = [
+  { id: "still", label: "Still happening" },
+  { id: "not-reached", label: "The fix didn't reach me" },
+  { id: "other", label: "Something else" },
+];
+export const MAX_FIX_TRIES = 2; // after two tries that didn't work, stop asking and offer a person instead
+
+export type FixCheck = { actionId: string; themeTitle: string; action: string; attempt: number };
+export type FixAnswer = { actionId: string; helped: boolean; reason?: FixReason; note?: string };
+// What HR sees for the latest try: counts and anonymous reasons, never who
+export type FixResults = { helped: number; notReally: number; waiting: number; reasons: { reason: FixReason; note: string }[] };
 
 // ---------- Themes, actions, notices ----------
 
@@ -182,11 +199,16 @@ export type Action = {
   team: string;
   action: string;
   owner: string;
-  status: "open" | "done";
+  // retry: half or more said the fix didn't help, so it's back on the list
+  // stuck: that happened on both tries; WorkPalz stops asking and offers the new hires a person to talk to
+  status: "open" | "done" | "retry" | "stuck";
   createdAt: string;
   doneAt?: string;
   peopleToTell?: number; // how many will get the update (HR sees the number, never who)
+  attempt?: number; // which try this is (1, 2…)
+  results?: FixResults; // "Did this help?" for the latest try
 };
+export const OPEN_ACTION: Action["status"][] = ["open", "retry", "stuck"];
 
 export type Notice = {
   id: string;
@@ -243,6 +265,7 @@ export type HrImpact = {
   questionsNowAnswered: number;
   solvedByGuide: number; // problems fixed by a guide tip instead of a ticket
   checkInRate: { thisWeek: number; lastWeek: number }; // % of new hires
+  fixesWorked: { worked: number; checked: number }; // follow-ups new hires said helped, of those they answered about
 };
 
 // How new hires answered one check-in question (counts only)
@@ -334,6 +357,7 @@ export type WorkPalzApi = {
   getQuestion: () => Promise<CheckInPrompt>;
   submitCheckIn: (input: CheckInInput) => Promise<CheckInReply>;
   getMyCheckIn: () => Promise<MyCheckIn | null>;
+  getMyFixCheck: () => Promise<FixCheck | null>;
   ask: (question: string) => Promise<AskResult>;
   submitRequest: (input: RequestInput) => Promise<void>;
   suggestRequest: (text: string) => Promise<RequestSuggestion>;
@@ -365,7 +389,7 @@ export type WorkPalzApi = {
   getLastAnalysis: () => Promise<Analysis | null>;
   listActions: () => Promise<Action[]>;
   addAction: (themeId: string) => Promise<void>;
-  setActionStatus: (id: string, status: Action["status"]) => Promise<void>;
+  setActionStatus: (id: string, status: "open" | "done", action?: string) => Promise<void>; // action: what's tried this time
   draftHandbook: (questions: string[]) => Promise<HandbookDraft>;
   publishHandbook: (input: HandbookInput) => Promise<number>;
   listHandbookAdded: () => Promise<HandbookEntry[]>;

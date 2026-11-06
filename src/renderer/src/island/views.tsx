@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { REQUEST_CATEGORIES, signalOf, type CheckInPrompt, STATUS_LABEL, type AskResult, type Availability, type CheckInReply, type MyCheckIn, type Colleague, type ColleagueSuggestion, type GuideTip, type Ping, type PingInput, type RequestSuggestion, type CheckInInput, type MyDataSummary, type Notice, type RequestCategory, type RequestInput, type Shortcuts, type SupportRequest, DEFAULT_SHORTCUTS } from "../../../shared/types";
+import { FIX_REASONS, REQUEST_CATEGORIES, signalOf, type CheckInPrompt, type FixCheck, type FixReason, STATUS_LABEL, type AskResult, type Availability, type CheckInReply, type MyCheckIn, type Colleague, type ColleagueSuggestion, type GuideTip, type Ping, type PingInput, type RequestSuggestion, type CheckInInput, type MyDataSummary, type Notice, type RequestCategory, type RequestInput, type Shortcuts, type SupportRequest, DEFAULT_SHORTCUTS } from "../../../shared/types";
 import { AMBER, BLUE, MUTED } from "./theme";
 import { Btn, Choice, Dot, Header, inputClass } from "./ui";
 
@@ -11,6 +11,11 @@ function useDraft<T>(key: string, initial: T) {
 }
 export const clearDrafts = (prefix: string) => {
   for (const k of Object.keys(drafts)) if (k.startsWith(prefix)) delete drafts[k];
+};
+// Open Ping a colleague straight on one person, with a message ready to edit
+export const presetPing = (colleagueId: string, message: string) => {
+  drafts["ping.who"] = colleagueId;
+  drafts["ping.msg"] = message;
 };
 
 export function MenuView(p: { pending: boolean; doneThisWeek: boolean; focusRunning: boolean; focusLeft: string; openRequests: number; onOpen: (v: "ask" | "request" | "ping" | "checkin" | "privacy" | "settings") => void; onToggleFocus: () => void; onHide: () => void; onClose: () => void; }) {
@@ -63,7 +68,7 @@ export function MenuView(p: { pending: boolean; doneThisWeek: boolean; focusRunn
   );
 }
 
-export function CheckInView(p: { prompt: CheckInPrompt; existing: MyCheckIn | null; onSubmit: (i: CheckInInput) => Promise<void>; onClose: () => void; onBack: () => void; }) {
+export function CheckInView(p: { prompt: CheckInPrompt; fixCheck: FixCheck | null; existing: MyCheckIn | null; onSubmit: (i: CheckInInput) => Promise<void>; onClose: () => void; onBack: () => void; }) {
   // Already checked in this week: start from that answer, and saving changes it
   const e = p.existing;
   const [picked, setAnswer] = useDraft<string | null>("ci.answer", e?.answer ?? null);
@@ -72,14 +77,20 @@ export function CheckInView(p: { prompt: CheckInPrompt; existing: MyCheckIn | nu
   const [note, setNote] = useDraft("ci.note", e?.note ?? "");
   const [shareName, setShareName] = useDraft("ci.share", e?.shareName ?? false);
   const [notifyMe, setNotifyMe] = useDraft("ci.notify", e?.notifyMe ?? true);
+  // "Did this help?" about a fix HR made: optional, null = not answered
+  const [helped, setHelped] = useDraft<boolean | null>("ci.fix", null);
+  const [reason, setReason] = useDraft<FixReason | null>("ci.fixReason", null);
+  const [fixNote, setFixNote] = useDraft("ci.fixNote", "");
   const [sending, setSending] = useState(false);
+  const fc = p.fixCheck;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!answer || sending) return;
     setSending(true);
     try {
-      await p.onSubmit({ answer, note: note.trim(), shareName, notifyMe });
+      const fix = fc && helped !== null ? { actionId: fc.actionId, helped, reason: helped ? undefined : (reason ?? undefined), note: helped ? undefined : fixNote.trim() } : undefined;
+      await p.onSubmit({ answer, note: note.trim(), shareName, notifyMe, fix });
       clearDrafts("ci.");
     } finally {
       setSending(false);
@@ -109,6 +120,43 @@ export function CheckInView(p: { prompt: CheckInPrompt; existing: MyCheckIn | nu
           })}
         </div>
       </fieldset>
+
+      {fc && (
+        <fieldset className="m-0 flex flex-col gap-2.5 rounded-2xl border [border-color:var(--line)] [background-color:var(--bg)] p-3.5">
+          <legend className="float-left mb-1 w-full p-0 text-[14px] font-semibold [color:var(--ink)]">
+            Did HR's fix help? <span className="font-normal" style={{ color: MUTED }}>(optional)</span>
+          </legend>
+          <p className="m-0 text-[13px] leading-snug" style={{ color: MUTED }}>
+            {fc.attempt > 1 ? "HR tried again on" : "You and others raised"} {fc.themeTitle.toLowerCase()}. What was done: {fc.action}
+          </p>
+          <div className="grid grid-cols-2 gap-1.5">
+            <Choice type="radio" name="fix" checked={helped === true} onChange={() => setHelped(true)} activeBg={signalOf("good").color} className="min-h-11 gap-1.5 text-[13px] [background-color:var(--surface)] [color:var(--ink)]">
+              <span aria-hidden="true">👍</span> Helped
+            </Choice>
+            <Choice type="radio" name="fix" checked={helped === false} onChange={() => setHelped(false)} activeBg={signalOf("struggling").color} className="min-h-11 gap-1.5 text-[13px] [background-color:var(--surface)] [color:var(--ink)]">
+              <span aria-hidden="true">👎</span> Not really
+            </Choice>
+          </div>
+          {helped === false && (
+            <>
+              <fieldset className="m-0 border-0 p-0">
+                <legend className="mb-1.5 p-0 text-[13px] font-semibold [color:var(--ink)]">What's still wrong?</legend>
+                <div className="flex flex-wrap gap-1.5">
+                  {FIX_REASONS.map((r) => (
+                    <Choice key={r.id} type="radio" name="fix-reason" checked={reason === r.id} onChange={() => setReason(r.id)} activeBg={signalOf("struggling").color} className="min-h-11 px-3 text-[12.5px] [background-color:var(--surface)] [color:var(--ink)]">
+                      {r.label}
+                    </Choice>
+                  ))}
+                </div>
+              </fieldset>
+              <label htmlFor="ci-fix-note" className="sr-only">
+                Tell HR more (optional)
+              </label>
+              <input id="ci-fix-note" value={fixNote} onChange={(e) => setFixNote(e.target.value)} maxLength={200} placeholder="Tell HR more (optional)" className={`${inputClass} min-h-11`} />
+            </>
+          )}
+        </fieldset>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="ci-note" className="text-[13px] font-semibold [color:var(--ink)]">
@@ -1012,11 +1060,20 @@ export function TourView(p: { name: string; shortcut: string; where: string; onD
 
 // ---------- After a check-in: give something back ----------
 
-export function CheckInThanksView(p: { reply: CheckInReply; updated: boolean; onOpenLink: (url: string) => void; onDone: () => void }) {
+export function CheckInThanksView(p: { reply: CheckInReply; updated: boolean; talkTo: Colleague | null; onOpenLink: (url: string) => void; onTalk: () => void; onDone: () => void }) {
   const r = p.reply.openRequest;
   return (
     <section aria-labelledby="thanks-title" className="flex flex-col gap-3">
       <Header id="thanks-title" color={AMBER} title={p.updated ? "Thanks, check-in updated" : "Thanks, check-in sent"} />
+      {p.reply.fixDidntHelp && (
+        <div className="flex flex-col gap-2.5 rounded-2xl [background-color:var(--bg)] border [border-color:var(--line)] p-3.5">
+          <p className="m-0 text-[13.5px] leading-relaxed [color:var(--ink)]">
+            Thanks for telling us the fix didn't help. HR sees it needs another try, but not that it was you.
+            {p.talkTo && " Want help now instead of waiting?"}
+          </p>
+          {p.talkTo && <Btn onClick={p.onTalk}>Ping {firstName(p.talkTo.name)}, {p.talkTo.role.split(",")[0]}</Btn>}
+        </div>
+      )}
       {r && (
         <p className="m-0 rounded-2xl [background-color:var(--bg)] border [border-color:var(--line)] p-3.5 text-[13.5px] leading-relaxed [color:var(--ink)]">
           Your <strong>{r.label.toLowerCase()}</strong> request is with {r.dept}: {STATUS_LABEL[r.status].toLowerCase()},{" "}

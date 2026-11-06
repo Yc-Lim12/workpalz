@@ -3,6 +3,7 @@ import { useId, useState } from "react";
 import {
   DRAFT_PLACEHOLDER,
   FALLBACK_QUESTION,
+  FIX_REASONS,
   GUIDE_SOURCES,
   guideLabel,
   MAX_CHOICES,
@@ -423,40 +424,110 @@ function GapEditor({
 
 // ---------- Follow-ups ----------
 
-export function FollowUpsTab({ actions, onStatus }: { actions: Action[]; onStatus: (id: string, s: Action["status"]) => void }) {
+const ACTION_ORDER: Record<Action["status"], number> = { retry: 0, stuck: 1, open: 2, done: 3 };
+
+// "Did this help?" for the latest try: counts for everyone, the anonymous reasons for HR only
+function FixOutcome({ a, manager }: { a: Action; manager: boolean }) {
+  const r = a.results;
+  if (!r) return null;
+  const reasonLabel = (id: string) => FIX_REASONS.find((x) => x.id === id)?.label ?? id;
+  return (
+    <div className="flex flex-col gap-1.5 text-[12.5px]" style={{ color: C.muted }}>
+      <span>
+        Did it help{(a.attempt ?? 1) > 1 ? ` (try ${a.attempt})` : ""}? <span className="font-semibold text-[color:var(--hr-text)]">Helped {r.helped}</span> ·{" "}
+        <span className="font-semibold text-[color:var(--hr-text)]">Not really {r.notReally}</span> · No answer yet {r.waiting}
+      </span>
+      {!manager && r.reasons.length > 0 && (
+        <ul className="m-0 flex list-disc flex-col gap-0.5 pl-5">
+          {r.reasons.map((x, i) => (
+            <li key={i}>
+              {reasonLabel(x.reason)}
+              {x.note && <span className="text-[color:var(--hr-text2)]">: "{x.note}"</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+type SetActionStatus = (id: string, s: "open" | "done", action?: string) => void;
+
+function FollowUpRow({ a, manager, onStatus }: { a: Action; manager: boolean; onStatus: SetActionStatus }) {
+  const id = useId();
+  const again = a.status === "retry" || a.status === "stuck";
+  // Trying again: say what's different this time. The new hires are told this, not the old text.
+  const [next, setNext] = useState(a.action);
+  return (
+    <li className="flex flex-col gap-2">
+      <label className="flex cursor-pointer items-start gap-3 rounded-xl p-3 hover:bg-[color:var(--hr-bg)]">
+        <input
+          type="checkbox"
+          checked={a.status === "done"}
+          onChange={(e) => onStatus(a.id, e.target.checked ? "done" : "open", again && next.trim() ? next.trim() : undefined)}
+          className="mt-0.5 h-5 w-5 shrink-0 accent-[color:var(--hr-blue)]"
+        />
+        <span className="flex flex-col gap-1">
+          <span className={`text-[14.5px] ${a.status === "done" ? "line-through" : ""}`} style={{ color: a.status === "done" ? "var(--hr-muted)" : C.text }}>
+            {a.action}
+          </span>
+          {a.status === "retry" && (
+            <span>
+              <Chip bg="var(--hr-amber-bg)" fg="var(--hr-amber-fg)">Needs another try</Chip>
+            </span>
+          )}
+          {a.status === "stuck" && (
+            <span>
+              <Chip bg="var(--hr-red-bg)" fg="var(--hr-red-fg)">Still not fixed after 2 tries</Chip>
+            </span>
+          )}
+          <span className="text-[12.5px]" style={{ color: C.muted }}>
+            {a.themeTitle} · {a.owner} · created {ago(a.createdAt)} ·{" "}
+            {a.status === "done"
+              ? `${a.peopleToTell ?? 0} new hire${a.peopleToTell === 1 ? " was" : "s were"} told`
+              : `will tell ${a.peopleToTell ?? 0} new hire${a.peopleToTell === 1 ? "" : "s"}, you won't see who`}
+          </span>
+          <FixOutcome a={a} manager={manager} />
+          {a.status === "retry" && (
+            <span className="text-[12.5px] text-[color:var(--hr-text2)]">
+              Half or more of the people who answered said it didn't help. Write what you'll try this time, then tick it done: the same new hires are told
+              and asked again.
+            </span>
+          )}
+          {a.status === "stuck" && (
+            <span className="text-[12.5px] text-[color:var(--hr-text2)]">
+              WorkPalz stopped asking and offered the new hires the HR Partner. Raise it with the {a.team} manager or talk to the team directly.
+            </span>
+          )}
+        </span>
+      </label>
+      {again && (
+        <div className="ml-11 mr-3 mb-2 flex flex-col gap-1.5">
+          <label htmlFor={`${id}-next`} className="text-[13px] font-semibold">
+            What will you try this time?
+          </label>
+          <input id={`${id}-next`} value={next} maxLength={300} onChange={(e) => setNext(e.target.value)} className={`${field} min-h-11`} />
+        </div>
+      )}
+    </li>
+  );
+}
+
+export function FollowUpsTab({ actions, manager = false, onStatus }: { actions: Action[]; manager?: boolean; onStatus: SetActionStatus }) {
+  const sorted = [...actions].sort((a, b) => ACTION_ORDER[a.status] - ACTION_ORDER[b.status]);
   return (
     <div className="flex flex-col gap-5">
       <Title
         title="Follow-ups"
-        intro="Marking a follow-up done tells the new hires who raised it, and asked to hear back, that action was taken. WorkPalz delivers it: you see how many are told, never who."
+        intro="Marking a follow-up done tells the new hires who raised it, and asked to hear back, that action was taken. At their next check-in WorkPalz asks if it helped; if half or more say not really, it comes back here. You see how many, never who."
       />
       {actions.length === 0 ? (
         <Empty>No follow-ups yet. Create one from an AI theme on the Overview.</Empty>
       ) : (
         <Card>
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
-            {actions.map((a) => (
-              <li key={a.id}>
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl p-3 hover:bg-[color:var(--hr-bg)]">
-                  <input
-                    type="checkbox"
-                    checked={a.status === "done"}
-                    onChange={(e) => onStatus(a.id, e.target.checked ? "done" : "open")}
-                    className="mt-0.5 h-5 w-5 shrink-0 accent-[color:var(--hr-blue)]"
-                  />
-                  <span className="flex flex-col gap-1">
-                    <span className={`text-[14.5px] ${a.status === "done" ? "line-through" : ""}`} style={{ color: a.status === "done" ? "var(--hr-muted)" : C.text }}>
-                      {a.action}
-                    </span>
-                    <span className="text-[12.5px]" style={{ color: C.muted }}>
-                      {a.themeTitle} · {a.owner} · created {ago(a.createdAt)} ·{" "}
-                      {a.status === "done"
-                        ? `${a.peopleToTell ?? 0} new hire${a.peopleToTell === 1 ? " was" : "s were"} told`
-                        : `will tell ${a.peopleToTell ?? 0} new hire${a.peopleToTell === 1 ? "" : "s"}, you won't see who`}
-                    </span>
-                  </span>
-                </label>
-              </li>
+            {sorted.map((a) => (
+              <FollowUpRow key={`${a.id}-${a.status}`} a={a} manager={manager} onStatus={onStatus} />
             ))}
           </ul>
         </Card>
